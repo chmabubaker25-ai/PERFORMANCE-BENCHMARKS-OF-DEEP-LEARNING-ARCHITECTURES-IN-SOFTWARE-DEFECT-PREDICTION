@@ -1,0 +1,5 @@
+streamlit>=1.34
+pandas
+numpy
+torch>=2.1
+torch-geometric>=2.4
