@@ -1,0 +1,2849 @@
+-------------------Machine Learning Implementation Code-------------------------------
+
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Get all CSV files in /content/ (Colab’s working directory)
+csv_files = [f for f in os.listdir('/content') if f.endswith('.csv')]
+
+# Dictionary to store dataframes
+dfs = {}
+
+# Iterate through each file, load and display first 5 rows
+for file in csv_files:
+    file_path = os.path.join('/content', file)
+
+    try:
+        df = pd.read_csv(file_path)
+    except Exception as e:
+        print(f"\nError reading {file}: {e}")
+        continue  # Skip files with errors
+
+    print(f"\n{'='*50}\nFirst 5 rows of {file}\n{'='*50}")
+    print(df.head())
+
+    # Store dataframe in dictionary
+    dfs[file] = df
+
+# Function to create key visualizations for each dataset
+def analyze_dataset(file, df):
+    print(f"\n{'='*50}\nAnalyzing {file}\n{'='*50}")
+
+    # Check for missing values
+    missing_values = df.isnull().sum()
+    print("\nMissing Values:\n", missing_values[missing_values > 0])
+
+    # Identify numeric columns
+    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+
+    # Histogram for numeric variables
+    if numeric_cols:
+        df[numeric_cols].hist(figsize=(12, 8), bins=20)
+        plt.suptitle(f"Feature Distribution - {file}")
+        plt.show()
+
+    # Boxplot to check for outliers
+    if numeric_cols:
+        plt.figure(figsize=(12, 6))
+        sns.boxplot(data=df[numeric_cols])
+        plt.xticks(rotation=90)
+        plt.title(f"Outliers in {file}")
+        plt.show()
+
+    # Correlation heatmap (if enough numerical features exist)
+    if len(numeric_cols) > 1:
+        plt.figure(figsize=(10, 8))
+        corr_matrix = df[numeric_cols].corr()
+        sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f", linewidths=0.5)
+        plt.title(f"Correlation Heatmap - {file}")
+        plt.show()
+
+# Run analysis for each dataset
+for file, df in dfs.items():
+    analyze_dataset(file, df)
+
+
+
+import os
+import pandas as pd
+import numpy as np
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+
+# Set working directory (adjust if needed)
+data_path = '/content'
+
+# Identify all CSV files
+csv_files = [f for f in os.listdir(data_path) if f.endswith('.csv')]
+
+# Dictionary to store cleaned dataframes
+cleaned_dfs = {}
+
+# Loop through each dataset
+for file in csv_files:
+    file_path = os.path.join(data_path, file)
+    try:
+        df = pd.read_csv(file_path)
+        print(f"\n{'='*40}\nLoaded: {file}\n{'='*40}")
+    except Exception as e:
+        print(f"Failed to load {file}: {e}")
+        continue
+
+    # Remove duplicate rows
+    df.drop_duplicates(inplace=True)
+
+    # Drop non-numeric columns (if needed, depending on modeling)
+    numeric_df = df.select_dtypes(include=[np.number])
+
+    # Handle missing values (mean imputation)
+    imputer = SimpleImputer(strategy='mean')
+    imputed_data = imputer.fit_transform(numeric_df)
+    df_imputed = pd.DataFrame(imputed_data, columns=numeric_df.columns)
+
+    # Standardize numeric features
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(df_imputed)
+    df_scaled = pd.DataFrame(scaled_data, columns=numeric_df.columns)
+
+    # Save cleaned and preprocessed DataFrame
+    cleaned_dfs[file] = df_scaled
+
+    print(f"Preprocessing complete for: {file}")
+    print("Shape after cleaning:", df_scaled.shape)
+    print("First 5 rows:\n", df_scaled.head())
+
+
+from sklearn.decomposition import PCA
+from sklearn.cross_decomposition import PLSRegression
+import pandas as pd
+
+# Dictionaries to store extracted feature sets
+extracted_features_pca = {}
+extracted_features_pls = {}
+
+# Iterate through all cleaned datasets
+for dataset_name, df in cleaned_dfs.items():
+    print(f"\n{'='*50}\nProcessing: {dataset_name}\n{'='*50}")
+
+    # Split features and target
+    if 'bug' not in df.columns:
+        print(f"Skipping {dataset_name} - 'bug' column not found.")
+        continue
+
+    X = df.drop(columns=['bug'])
+    y = df['bug']
+
+    # ---------------- PCA ----------------
+    pca = PCA(n_components=0.95)
+    X_pca = pca.fit_transform(X)
+    df_pca = pd.DataFrame(X_pca, columns=[f'PC{i+1}' for i in range(X_pca.shape[1])])
+    df_pca['bug'] = y.values
+    extracted_features_pca[dataset_name] = df_pca
+    print(f"PCA applied: {X_pca.shape[1]} components retained.")
+
+    # ---------------- PLS ----------------
+    pls = PLSRegression(n_components=X_pca.shape[1])  # Use same as PCA for fair comparison
+    X_pls = pls.fit_transform(X, y)[0]
+    df_pls = pd.DataFrame(X_pls, columns=[f'PLS{i+1}' for i in range(X_pls.shape[1])])
+    df_pls['bug'] = y.values
+    extracted_features_pls[dataset_name] = df_pls
+    print(f"PLS applied: {X_pls.shape[1]} components retained.")
+
+print("\n✅ Feature extraction completed for all datasets.")
+
+
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Set style for seaborn
+sns.set(style="whitegrid")
+
+# Loop through each cleaned dataset
+for dataset_name, df in cleaned_dfs.items():
+    print(f"\n{'='*50}\nEDA for: {dataset_name}\n{'='*50}")
+
+    # 1. Dataset Shape and Basic Info
+    print(f"Shape: {df.shape}")
+    print(f"Columns: {list(df.columns)}")
+    print("Class distribution (bug):\n", df['bug'].value_counts())
+
+    # 2. Histograms for numeric features
+    numeric_cols = df.select_dtypes(include='number').columns.tolist()
+    df[numeric_cols].hist(figsize=(16, 12), bins=20)
+    plt.suptitle(f"{dataset_name} - Feature Distributions", fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+    # 3. Boxplots to check for outliers
+    plt.figure(figsize=(16, 6))
+    sns.boxplot(data=df[numeric_cols])
+    plt.xticks(rotation=90)
+    plt.title(f"{dataset_name} - Boxplot for Outlier Detection")
+    plt.tight_layout()
+    plt.show()
+
+    # 4. Correlation Heatmap
+    if len(numeric_cols) > 1:
+        plt.figure(figsize=(14, 10))
+        corr = df[numeric_cols].corr()
+        sns.heatmap(corr, annot=False, cmap="coolwarm", fmt=".2f", linewidths=0.5)
+        plt.title(f"{dataset_name} - Correlation Heatmap")
+        plt.tight_layout()
+        plt.show()
+
+    # 5. Class balance pie chart
+    plt.figure(figsize=(5, 5))
+    df['bug'].value_counts().plot.pie(autopct='%1.1f%%', startangle=90, labels=['No Defect', 'Defect'] if 0 in df['bug'].unique() else df['bug'].unique())
+    plt.title(f"{dataset_name} - Bug Class Distribution")
+    plt.ylabel("")
+    plt.show()
+
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
+import numpy as np
+
+# Store results
+initial_model_results = {}
+
+# Loop through all cleaned datasets
+for dataset_name, df in cleaned_dfs.items():
+    print(f"\n{'='*50}\nTraining on: {dataset_name}\n{'='*50}")
+
+    if 'bug' not in df.columns:
+        print(f"Skipping {dataset_name} — 'bug' column not found.")
+        continue
+
+    # Fix target variable: convert continuous back to binary
+    y = df['bug'].apply(lambda x: 1 if x > 0 else 0)
+    X = df.drop(columns=['bug'])
+
+    # Split dataset
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+
+    # ---------------------
+    # Random Forest
+    # ---------------------
+    rf = RandomForestClassifier(random_state=42)
+    rf.fit(X_train, y_train)
+    rf_preds = rf.predict(X_test)
+    rf_acc = accuracy_score(y_test, rf_preds)
+    print(f"[Random Forest] Accuracy: {rf_acc:.4f}")
+    print("[Random Forest] Classification Report:\n", classification_report(y_test, rf_preds))
+
+    # ---------------------
+    # Support Vector Machine
+    # ---------------------
+    svm = SVC(kernel='rbf', random_state=42)
+    svm.fit(X_train, y_train)
+    svm_preds = svm.predict(X_test)
+    svm_acc = accuracy_score(y_test, svm_preds)
+    print(f"[SVM] Accuracy: {svm_acc:.4f}")
+    print("[SVM] Classification Report:\n", classification_report(y_test, svm_preds))
+
+    # Save results
+    initial_model_results[dataset_name] = {
+        'RandomForest_Accuracy': rf_acc,
+        'SVM_Accuracy': svm_acc
+    }
+
+print("\n✅ Initial model implementation complete on all datasets.")
+
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
+
+# Dictionary to store model performance results
+initial_model_results = {}
+
+# Loop over each dataset in cleaned_dfs
+for dataset_name, df in cleaned_dfs.items():
+    print(f"\n{'='*50}\nTraining on: {dataset_name}\n{'='*50}")
+
+    # Check if the target column 'bug' exists
+    if 'bug' not in df.columns:
+        print(f"Skipping {dataset_name} – 'bug' column not found.")
+        continue
+
+    # Convert the target variable to binary (1 for defect, 0 for no defect)
+    y = df['bug'].apply(lambda x: 1 if x > 0 else 0)
+    X = df.drop(columns=['bug'])
+
+    # Split the data into training (80%) and testing (20%) sets with stratification
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+
+    # ------------------- Random Forest -------------------
+    rf_model = RandomForestClassifier(random_state=42)
+    rf_model.fit(X_train, y_train)
+    rf_preds = rf_model.predict(X_test)
+
+    rf_accuracy = accuracy_score(y_test, rf_preds)
+    print(f"[Random Forest] Accuracy: {rf_accuracy:.4f}")
+    print("[Random Forest] Classification Report:")
+    print(classification_report(y_test, rf_preds))
+
+    # ------------------- SVM -------------------
+    svm_model = SVC(kernel='rbf', random_state=42)
+    svm_model.fit(X_train, y_train)
+    svm_preds = svm_model.predict(X_test)
+
+    svm_accuracy = accuracy_score(y_test, svm_preds)
+    print(f"[SVM] Accuracy: {svm_accuracy:.4f}")
+    print("[SVM] Classification Report:")
+    print(classification_report(y_test, svm_preds))
+
+    # Store the results in the dictionary
+    initial_model_results[dataset_name] = {
+        "RandomForest_Accuracy": rf_accuracy,
+        "SVM_Accuracy": svm_accuracy
+    }
+
+print("\n✅ Initial model training and testing complete on all datasets.")
+
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+tuned_model_results = {}
+
+# Parameter grids
+rf_param_grid = {
+    'n_estimators': [50, 100],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5],
+    'min_samples_leaf': [1, 2],
+    'bootstrap': [True, False]
+}
+
+svm_param_grid = {
+    'C': [0.1, 1, 10],
+    'gamma': ['scale', 0.01],
+    'kernel': ['rbf', 'linear']
+}
+
+# Function to plot confusion matrix
+def plot_conf_matrix(y_true, y_pred, title):
+    cm = confusion_matrix(y_true, y_pred)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["No Bug", "Bug"], yticklabels=["No Bug", "Bug"])
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title(title)
+    plt.show()
+
+# Loop through datasets
+for dataset_name, df in cleaned_dfs.items():
+    print(f"\n{'='*60}\nHyperparameter Tuning for: {dataset_name}\n{'='*60}")
+
+    if 'bug' not in df.columns:
+        print(f"Skipping {dataset_name} — 'bug' column not found.")
+        continue
+
+    y = df['bug'].apply(lambda x: 1 if x > 0 else 0)
+    X = df.drop(columns=['bug'])
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+
+    # ----------------------
+    # Random Forest Tuning
+    # ----------------------
+    rf = RandomForestClassifier(random_state=42)
+    rf_grid = GridSearchCV(rf, rf_param_grid, cv=3, scoring='accuracy', n_jobs=-1)
+    rf_grid.fit(X_train, y_train)
+    rf_best = rf_grid.best_estimator_
+    rf_preds = rf_best.predict(X_test)
+    rf_acc = accuracy_score(y_test, rf_preds)
+    rf_cv = cross_val_score(rf_best, X, y, cv=5, scoring='accuracy').mean()
+
+    print(f"[Random Forest] Best Params: {rf_grid.best_params_}")
+    print(f"[Random Forest] Test Accuracy: {rf_acc:.4f} | CV Accuracy: {rf_cv:.4f}")
+    print("[Random Forest] Classification Report:\n", classification_report(y_test, rf_preds))
+    plot_conf_matrix(y_test, rf_preds, f"{dataset_name} - Random Forest Confusion Matrix")
+
+    # ----------------------
+    # SVM Tuning
+    # ----------------------
+    svm = SVC()
+    svm_grid = GridSearchCV(svm, svm_param_grid, cv=3, scoring='accuracy', n_jobs=-1)
+    svm_grid.fit(X_train, y_train)
+    svm_best = svm_grid.best_estimator_
+    svm_preds = svm_best.predict(X_test)
+    svm_acc = accuracy_score(y_test, svm_preds)
+    svm_cv = cross_val_score(svm_best, X, y, cv=5, scoring='accuracy').mean()
+
+    print(f"[SVM] Best Params: {svm_grid.best_params_}")
+    print(f"[SVM] Test Accuracy: {svm_acc:.4f} | CV Accuracy: {svm_cv:.4f}")
+    print("[SVM] Classification Report:\n", classification_report(y_test, svm_preds))
+    plot_conf_matrix(y_test, svm_preds, f"{dataset_name} - SVM Confusion Matrix")
+
+    tuned_model_results[dataset_name] = {
+        'RandomForest_BestParams': rf_grid.best_params_,
+        'RandomForest_TestAccuracy': rf_acc,
+        'RandomForest_CVAccuracy': rf_cv,
+        'SVM_BestParams': svm_grid.best_params_,
+        'SVM_TestAccuracy': svm_acc,
+        'SVM_CVAccuracy': svm_cv
+    }
+
+print("\n✅ All models tuned, evaluated, and visualized.")
+
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Summarized results from your tuning output (manually compiled from the logs)
+data = [
+    ["poi-2.0.csv", 0.8571, 0.8664, 0.8571, 0.8726],
+    ["data_arc.csv", 0.8837, 0.8530, 0.8605, 0.8626],
+    ["xerces-1.2.csv", 0.8636, 0.8273, 0.8409, 0.8386],
+    ["data_prop-6.csv", 0.8452, 0.8317, 0.8690, 0.8726],
+    ["jedit-3.2.csv", 0.8364, 0.8162, 0.7818, 0.8123],
+    ["xalan-2.4.csv", 0.8690, 0.8464, 0.8483, 0.8479],
+    ["data_ivy-2.0.csv", 0.9130, 0.8870, 0.8841, 0.8870],
+    ["synapse-1.2.csv", 0.7500, 0.7618, 0.7885, 0.7697],
+    ["camel-1.6.csv", 0.7876, 0.7969, 0.8031, 0.8083],
+    ["ant-1.7.csv", 0.8322, 0.8188, 0.8255, 0.8268],
+    ["velocity-1.6.csv", 0.6957, 0.7510, 0.6957, 0.7158],
+    ["lucene-2.0.csv", 0.7949, 0.7487, 0.8462, 0.7641],
+    ["jedit-4.2.csv", 0.8649, 0.8774, 0.8919, 0.8801],
+    ["camel-1.0.csv", 0.9412, 0.9558, 0.9559, 0.9617],
+    ["log4j-1.1.csv", 0.8182, 0.7991, 0.8636, 0.8087],
+    ["xerces-1.3.csv", 0.8901, 0.8852, 0.8791, 0.8720],
+    ["data_redaktor.csv", 0.9118, 0.8941, 0.9118, 0.9059],
+    ["synapse-1.0.csv", 0.8125, 0.8980, 0.8438, 0.8984],
+]
+
+df_results = pd.DataFrame(data, columns=[
+    "Dataset",
+    "RF Test Acc", "RF CV Acc",
+    "SVM Test Acc", "SVM CV Acc"
+])
+
+# Display DataFrame
+
+print(df_results.head())
+
+
+
+# Plot: Test Accuracy Comparison
+plt.figure(figsize=(12, 6))
+df_results.set_index("Dataset")[["RF Test Acc", "SVM Test Acc"]].plot(kind="bar", rot=90)
+plt.title("Test Accuracy Comparison: Random Forest vs. SVM")
+plt.ylabel("Accuracy")
+plt.tight_layout()
+plt.show()
+
+# Plot: Cross-Validation Accuracy Comparison
+plt.figure(figsize=(12, 6))
+df_results.set_index("Dataset")[["RF CV Acc", "SVM CV Acc"]].plot(kind="bar", rot=90)
+plt.title("CV Accuracy Comparison: Random Forest vs. SVM")
+plt.ylabel("Accuracy")
+plt.tight_layout()
+plt.show()
+
+# Summary Statistics
+rf_mean = df_results[["RF Test Acc", "RF CV Acc"]].mean()
+svm_mean = df_results[["SVM Test Acc", "SVM CV Acc"]].mean()
+print("\nAverage Performance:")
+print(f"Random Forest - Test: {rf_mean[0]:.4f}, CV: {rf_mean[1]:.4f}")
+print(f"SVM           - Test: {svm_mean[0]:.4f}, CV: {svm_mean[1]:.4f}")
+
+
+import pandas as pd
+
+# Melt the DataFrame to long format for ranking
+df_long = pd.melt(df_results, id_vars=['Dataset'],
+                  value_vars=['RF Test Acc', 'SVM Test Acc'],
+                  var_name='Model', value_name='Test Accuracy')
+
+# Assign rank within each dataset
+df_long['Rank'] = df_long.groupby('Dataset')['Test Accuracy'].rank(ascending=False)
+
+# Sort and display
+df_ranked = df_long.sort_values(by=['Dataset', 'Rank'])
+print(df_ranked)
+
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Pivot to get datasets as rows and models as columns
+df_pivot = df_long.pivot(index='Dataset', columns='Model', values='Test Accuracy')
+
+# Plot heatmap
+plt.figure(figsize=(10, 8))
+sns.heatmap(df_pivot, annot=True, cmap="YlGnBu", fmt=".4f")
+plt.title("Test Accuracy Comparison (Random Forest vs SVM)")
+plt.ylabel("Dataset")
+plt.xlabel("Model")
+plt.tight_layout()
+plt.show()
+
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, VotingClassifier
+from sklearn.svm import SVC
+from sklearn.pipeline import Pipeline
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+warnings.filterwarnings('ignore')
+
+def create_hybrid_model():
+    """
+    Creates a hybrid model using stacked ensemble approach
+    """
+    # Level 1 models (base learners)
+    rf_base = RandomForestClassifier(n_estimators=80, max_depth=8, random_state=42)
+    svm_base = SVC(kernel='rbf', C=5, gamma='scale', probability=True, random_state=42)
+    ada_base = AdaBoostClassifier(n_estimators=60, learning_rate=0.9, random_state=42)
+
+    # Hybrid classifier using voting
+    hybrid_classifier = VotingClassifier(
+        estimators=[
+            ('rf', rf_base),
+            ('svm', svm_base),
+            ('ada', ada_base)
+        ],
+        voting='soft'
+    )
+
+    pipeline = Pipeline([
+        ('scaler', StandardScaler()),
+        ('feature_selection', SelectKBest(score_func=f_classif, k='all')),
+        ('classifier', hybrid_classifier)
+    ])
+
+    return pipeline
+
+# Dataset list
+datasets = [
+    "poi-2.0.csv", "data_arc.csv", "xerces-1.2.csv", "data_prop-6.csv",
+    "jedit-3.2.csv", "xalan-2.4.csv", "data_ivy-2.0.csv", "synapse-1.2.csv",
+    "camel-1.6.csv", "ant-1.7.csv", "velocity-1.6.csv", "lucene-2.0.csv",
+    "jedit-4.2.csv", "camel-1.0.csv", "log4j-1.1.csv", "xerces-1.3.csv",
+    "data_redaktor.csv", "synapse-1.0.csv"
+]
+
+hybrid_results = []
+
+print("="*80)
+print("Hybrid Model Evaluation with Classification Reports")
+print("="*80)
+
+for dataset in datasets:
+    try:
+        df = pd.read_csv(dataset)
+        df = df.select_dtypes(include=[np.number])
+
+        if df.shape[1] < 2:
+            continue
+
+        X = df.iloc[:, :-1]
+        y = df.iloc[:, -1]
+
+        # Handle class imbalance check
+        class_counts = y.value_counts()
+        if len(class_counts) < 2 or class_counts.min() < 5:
+            continue
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, stratify=y, random_state=42
+        )
+
+        # === Standalone Models ===
+        # Random Forest
+        rf = RandomForestClassifier(n_estimators=50, random_state=42)
+        rf.fit(X_train, y_train)
+        rf_test_acc = accuracy_score(y_test, rf.predict(X_test))
+        rf_cv_acc = cross_val_score(rf, X, y, cv=5, scoring='accuracy').mean()
+
+        # SVM
+        svm = SVC(kernel='rbf', C=1, gamma='scale', random_state=42)
+        svm.fit(X_train, y_train)
+        svm_test_acc = accuracy_score(y_test, svm.predict(X_test))
+        svm_cv_acc = cross_val_score(svm, X, y, cv=5, scoring='accuracy').mean()
+
+        # === Hybrid Model ===
+        hybrid_model = create_hybrid_model()
+        hybrid_model.fit(X_train, y_train)
+        hybrid_pred = hybrid_model.predict(X_test)
+        hybrid_test_acc = accuracy_score(y_test, hybrid_pred)
+        hybrid_cv_acc = cross_val_score(hybrid_model, X, y, cv=5, scoring='accuracy').mean()
+
+        # Store results
+        hybrid_results.append({
+            "Dataset": dataset,
+            "RF Test Acc": round(rf_test_acc, 4),
+            "RF CV Acc": round(rf_cv_acc, 4),
+            "SVM Test Acc": round(svm_test_acc, 4),
+            "SVM CV Acc": round(svm_cv_acc, 4),
+            "Hybrid Test Acc": round(hybrid_test_acc, 4),
+            "Hybrid CV Acc": round(hybrid_cv_acc, 4)
+        })
+
+        # Print detailed results for each dataset
+        print(f"\n{'='*60}")
+        print(f"DATASET: {dataset}")
+        print(f"{'='*60}")
+        print(f"RF Test Acc: {rf_test_acc:.4f} | CV Acc: {rf_cv_acc:.4f}")
+        print(f"SVM Test Acc: {svm_test_acc:.4f} | CV Acc: {svm_cv_acc:.4f}")
+        print(f"Hybrid Test Acc: {hybrid_test_acc:.4f} | CV Acc: {hybrid_cv_acc:.4f}")
+
+        # Classification Report
+        print(f"\nCLASSIFICATION REPORT - {dataset}")
+        print("-" * 50)
+        print(classification_report(y_test, hybrid_pred, digits=4, zero_division=0))
+
+        # Confusion Matrix
+        cm = confusion_matrix(y_test, hybrid_pred)
+
+        # Plot confusion matrix
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                   xticklabels=np.unique(y), yticklabels=np.unique(y))
+        plt.title(f'Hybrid Model Confusion Matrix - {dataset}')
+        plt.xlabel('Predicted Label')
+        plt.ylabel('True Label')
+        plt.tight_layout()
+        plt.show()
+
+    except Exception as e:
+        print(f"Error processing {dataset}: {e}")
+        continue
+
+# Convert to DataFrame and display summary results
+df_results = pd.DataFrame(hybrid_results)
+print("\n" + "="*80)
+print("SUMMARY RESULTS")
+print("="*80)
+print(df_results)
+
+# Calculate average improvements
+if len(df_results) > 0:
+    avg_rf_test = df_results["RF Test Acc"].mean()
+    avg_svm_test = df_results["SVM Test Acc"].mean()
+    avg_hybrid_test = df_results["Hybrid Test Acc"].mean()
+
+    print(f"\nAverage Test Accuracies:")
+    print(f"  RF: {avg_rf_test:.4f}")
+    print(f"  SVM: {avg_svm_test:.4f}")
+    print(f"  Hybrid: {avg_hybrid_test:.4f}")
+
+    best_standalone = max(avg_rf_test, avg_svm_test)
+    hybrid_improvement = ((avg_hybrid_test - best_standalone) / best_standalone) * 100
+
+    print(f"\nHybrid Model Improvement over best standalone: {hybrid_improvement:+.2f}%")
+
+# Final Visualization - Performance Comparison
+if len(df_results) > 0:
+    plt.figure(figsize=(15, 8))
+
+    # Prepare data for plotting
+    plot_data = df_results.melt(
+        id_vars="Dataset",
+        value_vars=["RF Test Acc", "SVM Test Acc", "Hybrid Test Acc"],
+        var_name="Model", value_name="Test Accuracy"
+    )
+
+    sns.barplot(data=plot_data, x="Dataset", y="Test Accuracy", hue="Model")
+    plt.xticks(rotation=45, ha='right')
+    plt.title("Hybrid Model vs Standalone Models - Test Accuracy Comparison")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.show()
+
+    # Performance comparison heatmap
+    plt.figure(figsize=(12, 8))
+    comparison_data = df_results[["Dataset", "RF Test Acc", "SVM Test Acc", "Hybrid Test Acc"]].set_index("Dataset")
+    sns.heatmap(comparison_data.T, annot=True, fmt='.4f', cmap='YlOrRd', cbar_kws={'label': 'Accuracy'})
+    plt.title("Model Performance Heatmap")
+    plt.tight_layout()
+    plt.show()
+
+
+    --------------------------------------------Deep Learning Models Implementation-----------------------------------------------------
+
+
+    import torch
+print(torch.__version__)
+
+
+pip install torch_geometric
+
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.data import Data, DataLoader
+from sklearn.metrics import classification_report, roc_auc_score
+import numpy as np
+
+# GCN Model
+class GCN(nn.Module):
+    def __init__(self, num_node_features):
+        super(GCN, self).__init__()
+        self.conv1 = GCNConv(num_node_features, 32)
+        self.conv2 = GCNConv(32, 64)
+        self.lin = nn.Linear(64, 1)
+
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, training=self.training)
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return torch.sigmoid(self.lin(x)).view(-1)
+
+# Generate toy graphs
+def generate_synthetic_graphs(num_graphs=10, num_nodes=5, num_features=8):
+    graphs = []
+    for _ in range(num_graphs):
+        x = torch.randn((num_nodes, num_features), dtype=torch.float)
+        edge_index = torch.tensor([[i, (i+1)%num_nodes] for i in range(num_nodes)], dtype=torch.long).t()
+        y = torch.tensor([np.random.randint(0, 2)], dtype=torch.float)
+        graphs.append(Data(x=x, edge_index=edge_index, y=y))
+    return graphs
+
+graphs = generate_synthetic_graphs()
+loader = DataLoader(graphs, batch_size=2, shuffle=True)
+
+# Train GNN
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = GCN(num_node_features=8).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+criterion = nn.BCELoss()
+
+model.train()
+for epoch in range(10):
+    for batch in loader:
+        batch = batch.to(device)
+        optimizer.zero_grad()
+        out = model(batch.x, batch.edge_index, batch.batch)
+        loss = criterion(out, batch.y)
+        loss.backward()
+        optimizer.step()
+
+# Evaluate GNN
+model.eval()
+all_preds, all_labels = [], []
+with torch.no_grad():
+    for batch in loader:
+        batch = batch.to(device)
+        pred = model(batch.x, batch.edge_index, batch.batch)
+        all_preds.extend(pred.cpu().numpy())
+        all_labels.extend(batch.y.cpu().numpy())
+
+binary_preds = (np.array(all_preds) > 0.5).astype(int)
+print("GNN Report:\n", classification_report(all_labels, binary_preds))
+print("GNN AUC:", roc_auc_score(all_labels, all_preds))
+
+
+
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.data import Data, DataLoader
+from sklearn.metrics import classification_report, roc_auc_score, roc_curve, auc
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+# Define GCN
+class GCN(nn.Module):
+    def __init__(self, num_node_features):
+        super(GCN, self).__init__()
+        self.conv1 = GCNConv(num_node_features, 32)
+        self.conv2 = GCNConv(32, 64)
+        self.fc = nn.Linear(64, 1)
+
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, training=self.training)
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return torch.sigmoid(self.fc(x)).view(-1)
+
+# Generate synthetic graphs
+def generate_synthetic_graphs(num_graphs=30, num_nodes=5, num_features=8):
+    graphs = []
+    for _ in range(num_graphs):
+        x = torch.randn((num_nodes, num_features), dtype=torch.float)
+        edge_index = torch.tensor([[i, (i+1)%num_nodes] for i in range(num_nodes)], dtype=torch.long).t()
+        y = torch.tensor([np.random.randint(0, 2)], dtype=torch.float)
+        graphs.append(Data(x=x, edge_index=edge_index, y=y))
+    return graphs
+
+graphs = generate_synthetic_graphs()
+loader = DataLoader(graphs, batch_size=4, shuffle=True)
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = GCN(num_node_features=8).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+criterion = nn.BCELoss()
+
+# Training loop
+model.train()
+for epoch in range(10):
+    for batch in loader:
+        batch = batch.to(device)
+        optimizer.zero_grad()
+        out = model(batch.x, batch.edge_index, batch.batch)
+        loss = criterion(out, batch.y)
+        loss.backward()
+        optimizer.step()
+
+# Evaluation
+model.eval()
+all_preds, all_labels = [], []
+with torch.no_grad():
+    for batch in loader:
+        batch = batch.to(device)
+        pred = model(batch.x, batch.edge_index, batch.batch)
+        all_preds.extend(pred.cpu().numpy())
+        all_labels.extend(batch.y.cpu().numpy())
+
+# ROC & Report
+y_pred = (np.array(all_preds) > 0.5).astype(int)
+gnn_auc = roc_auc_score(all_labels, all_preds)
+report = classification_report(all_labels, y_pred, output_dict=True)
+print(pd.DataFrame(report).T)
+print("AUC:", gnn_auc)
+
+# ROC curve
+fpr, tpr, _ = roc_curve(all_labels, all_preds)
+plt.plot(fpr, tpr, label=f"GNN (AUC = {gnn_auc:.2f})")
+plt.plot([0, 1], [0, 1], 'k--')
+plt.title("GNN ROC Curve")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
+# ===== Tracking training loss and accuracy =====
+train_losses = []
+train_accuracies = []
+
+model.train()
+for epoch in range(100):
+    epoch_loss = 0.0
+    correct = 0
+    total = 0
+
+    for batch in loader:
+        batch = batch.to(device)
+        optimizer.zero_grad()
+        out = model(batch.x, batch.edge_index, batch.batch)
+        loss = criterion(out, batch.y)
+        loss.backward()
+        optimizer.step()
+
+        # Track loss
+        epoch_loss += loss.item() * batch.y.size(0)
+
+        # Track accuracy
+        preds = (out.detach().cpu().numpy() > 0.5).astype(int)
+        labels = batch.y.cpu().numpy().astype(int)
+        correct += (preds == labels).sum()
+        total += len(labels)
+
+    train_losses.append(epoch_loss / total)
+    train_accuracies.append(correct / total)
+    print(f"Epoch {epoch+1}: Loss={train_losses[-1]:.4f}, Acc={train_accuracies[-1]:.4f}")
+
+# ===== Plot curves =====
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10,4))
+
+plt.subplot(1,2,1)
+plt.plot(train_losses, marker='o')
+plt.title("Training Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.grid(True)
+
+plt.subplot(1,2,2)
+plt.plot(train_accuracies, marker='o', color='orange')
+plt.title("Training Accuracy")
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()
+
+
+# 1) DATA LOADING (projects + target)  -----------------------------
+import os, glob, numpy as np, pandas as pd
+
+DATA_DIR = "/content"             # change if needed
+FILE_GLOB = "*.csv"               # your 18 PROMISE files
+TARGET_COL = "bug"
+SEED = 42
+
+def load_all_projects(data_dir=DATA_DIR, pattern=FILE_GLOB, target_col=TARGET_COL):
+    frames = []
+    files = glob.glob(os.path.join(data_dir, pattern))
+    if not files:
+        raise FileNotFoundError("No CSV files found. Check DATA_DIR / pattern.")
+    for fp in files:
+        df = pd.read_csv(fp)
+        df["__project__"] = os.path.basename(fp).split(".csv")[0]
+        frames.append(df)
+    big = pd.concat(frames, ignore_index=True)
+
+    if target_col not in big.columns:
+        raise ValueError(f"Target column '{target_col}' not in data.")
+
+    # numeric features only (do NOT touch target)
+    X = big.drop(columns=[target_col]).select_dtypes(include=["number"]).copy()
+    y_raw = big[target_col].copy()
+
+    # keep a project label for CPDP
+    projects = big["__project__"].astype(str).values
+    # sometimes a 'version' column exists; drop if constant noise
+    if "version" in X.columns and X["version"].nunique() <= 1:
+        X = X.drop(columns=["version"])
+
+    # Binarize bug safely (already {0,1}? keep; else >0 => 1)
+    if set(np.unique(y_raw)).issubset({0,1}):
+        y = y_raw.astype(int).values
+    else:
+        y = (y_raw.values > 0).astype(int)
+
+    return X, y, projects
+
+X_df, y, projects = load_all_projects()
+print(f"Merged: X={X_df.shape}, positives={y.sum()} ({y.mean():.2%}), projects={len(np.unique(projects))}")
+
+
+# --- SHARED SETUP (run once) ---
+import os, glob, numpy as np, pandas as pd, matplotlib.pyplot as plt
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import (classification_report, confusion_matrix, roc_auc_score,
+                             roc_curve, accuracy_score, precision_recall_fscore_support)
+from sklearn.utils.class_weight import compute_class_weight
+
+import tensorflow as tf
+from tensorflow.keras import layers, models, optimizers, callbacks
+
+SEED = 42
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
+DATA_DIR = "/content"      # <--- change if needed
+FILE_GLOB = "*.csv"
+
+def load_and_merge(data_dir=DATA_DIR, pattern=FILE_GLOB):
+    frames = []
+    for fp in glob.glob(os.path.join(data_dir, pattern)):
+        try:
+            df = pd.read_csv(fp)
+            df["__source__"] = os.path.basename(fp)
+            frames.append(df)
+        except Exception as e:
+            print(f"Skipping {fp}: {e}")
+    if not frames:
+        raise FileNotFoundError("No CSVs found.")
+    return pd.concat(frames, ignore_index=True)
+
+df_raw = load_and_merge()
+assert "bug" in df_raw.columns, "Expected target column 'bug'."
+
+# Separate features/target. Keep only numeric features (drop text cols)
+y_raw = df_raw["bug"].copy()
+X_raw = df_raw.drop(columns=["bug"]).select_dtypes(include=["number"]).copy()
+
+# (optional) drop constant/noisy columns
+for noisy in ["version"]:
+    if noisy in X_raw.columns and X_raw[noisy].nunique() <= 1:
+        X_raw = X_raw.drop(columns=[noisy])
+
+# Safe binarization: if not already {0,1}, map >0 -> 1 else 0
+def to_binary(s):
+    u = set(pd.Series(s).unique())
+    if u.issubset({0,1}):
+        return s.astype(int).values
+    return (s.values > 0).astype(int)
+
+y = to_binary(y_raw)
+X = X_raw.values.astype(np.float32)
+sources = df_raw["__source__"].values
+
+print(f"Merged: X={X.shape}, positives={y.sum()} ({y.mean():.2%}), projects={np.unique(sources).size}")
+
+# --- common helpers ---
+def fit_transform_train(X_tr):
+    imp = SimpleImputer(strategy="median")
+    sc  = StandardScaler()
+    X_tr = imp.fit_transform(X_tr)
+    X_tr = sc.fit_transform(X_tr)
+    return X_tr, imp, sc
+
+def transform_test(X_te, imp, sc):
+    X_te = imp.transform(X_te)
+    X_te = sc.transform(X_te)
+    return X_te
+
+def youden_threshold(y_true, y_prob):
+    fpr, tpr, thr = roc_curve(y_true, y_prob)
+    j = tpr - fpr
+    return thr[np.argmax(j)]
+
+def plot_learning(history, title_prefix):
+    # accuracy
+    plt.figure()
+    plt.plot(history.history["accuracy"], label="train")
+    plt.plot(history.history["val_accuracy"], label="val")
+    plt.title(f"{title_prefix} Accuracy"); plt.xlabel("Epoch"); plt.ylabel("Accuracy")
+    plt.legend(); plt.grid(True); plt.show()
+    # loss
+    plt.figure()
+    plt.plot(history.history["loss"], label="train")
+    plt.plot(history.history["val_loss"], label="val")
+    plt.title(f"{title_prefix} Loss"); plt.xlabel("Epoch"); plt.ylabel("Loss")
+    plt.legend(); plt.grid(True); plt.show()
+
+def plot_cm(cm, title):
+    plt.figure()
+    plt.imshow(cm, interpolation="nearest")
+    plt.title(title); plt.xlabel("Predicted"); plt.ylabel("True")
+    ticks = np.arange(2)
+    plt.xticks(ticks, ["No Defect","Defect"])
+    plt.yticks(ticks, ["No Defect","Defect"])
+    for i in range(2):
+        for j in range(2):
+            plt.text(j, i, cm[i, j], ha="center", va="center")
+    plt.colorbar(); plt.grid(False); plt.show()
+
+
+!pip -q install imbalanced-learn
+
+from imblearn.over_sampling import SMOTE
+
+def apply_smote(X_tr, y_tr, k_neighbors=5, random_state=SEED):
+    sm = SMOTE(k_neighbors=min(k_neighbors, np.bincount(y_tr)[1]-1) if (y_tr.sum()>k_neighbors) else 1,
+               random_state=random_state)
+    Xb, yb = sm.fit_resample(X_tr, y_tr)
+    return Xb, yb
+
+
+# ===========================
+# CPDP with GCN (PyTorch Geometric) — NO EARLY STOPPING
+# Always run full 100 epochs and display progress/verification
+# ===========================
+import os, glob, numpy as np, pandas as pd, matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, accuracy_score, precision_recall_fscore_support
+from sklearn.neighbors import NearestNeighbors
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch_geometric.data import Data
+from torch_geometric.nn import GCNConv
+
+# ---------------------------
+# 0) Load & prepare PROMISE tables (expects 'bug' target)
+# ---------------------------
+SEED = 42
+rng = np.random.default_rng(SEED)
+torch.manual_seed(SEED)
+
+DATA_DIR = "/content"                # <-- change if needed
+FILE_GLOB = "*.csv"                  # which files to load
+
+def load_all_projects(data_dir=DATA_DIR, pattern=FILE_GLOB):
+    dfs = []
+    for fp in glob.glob(os.path.join(data_dir, pattern)):
+        try:
+            df = pd.read_csv(fp)
+            if "bug" in df.columns:
+                df["__source__"] = os.path.basename(fp)
+                dfs.append(df)
+        except Exception as e:
+            print(f"Skipping {fp}: {e}")
+    if not dfs:
+        raise FileNotFoundError("No CSVs with 'bug' found.")
+    return pd.concat(dfs, ignore_index=True)
+
+df_all = load_all_projects()
+print("Loaded rows:", len(df_all), "projects:", df_all["__source__"].nunique())
+
+# Keep only numeric features (drop text columns)
+feat_df = df_all.drop(columns=["bug"]).select_dtypes(include=["number"]).copy()
+y_all = df_all["bug"].copy()
+sources = df_all["__source__"].values
+
+# binarize target robustly
+if not set(np.unique(y_all)).issubset({0,1}):
+    y_all = (y_all.values > 0).astype(int)
+else:
+    y_all = y_all.values.astype(int)
+
+feat_names_all = feat_df.columns.tolist()
+
+# ---------------------------
+# 1) Build a graph from one project's tabular metrics via k-NN
+# ---------------------------
+def fit_transform_train(X_train):
+    imp = SimpleImputer(strategy="median")
+    sc  = StandardScaler()
+    X_tr = imp.fit_transform(X_train)
+    X_tr = sc.fit_transform(X_tr)
+    return X_tr, imp, sc
+
+def transform_test(X_test, imp, sc):
+    return sc.transform(imp.transform(X_test))
+
+def build_knn_graph(X, y, k=8):
+    """
+    X: (N, F) numpy array (already imputed/scaled)
+    y: (N,) labels in {0,1}
+    Returns a PyG Data object for node classification.
+    """
+    n = X.shape[0]
+    kk = min(k, max(1, n-1))
+    nbrs = NearestNeighbors(n_neighbors=kk+1, metric="euclidean").fit(X)
+    distances, indices = nbrs.kneighbors(X)  # includes self at [:,0]
+
+    # build undirected edge list (exclude self edges)
+    edges = []
+    for i in range(n):
+        for j in indices[i, 1:]:
+            edges.append((i, j))
+            edges.append((j, i))
+    edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+
+    data = Data(
+        x=torch.tensor(X, dtype=torch.float32),
+        y=torch.tensor(y, dtype=torch.float32),
+        edge_index=edge_index
+    )
+    return data
+
+# ---------------------------
+# 2) GCN model (node classifier)
+# ---------------------------
+class GCNNode(nn.Module):
+    def __init__(self, in_feats, hidden=64, dropout=0.3):
+        super().__init__()
+        self.conv1 = GCNConv(in_feats, hidden)
+        self.conv2 = GCNConv(hidden, hidden)
+        self.drop  = nn.Dropout(dropout)
+        self.out   = nn.Linear(hidden, 1)
+
+    def forward(self, x, edge_index):
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.drop(x)
+        x = F.relu(self.conv2(x, edge_index))
+        x = self.out(x).squeeze(-1)           # logits
+        return x
+
+# ---------------------------
+# 3) Train on one project, test on another (NO EARLY STOPPING)
+# ---------------------------
+def train_one_to_one_gcn(train_df, test_df, hidden=64, lr=1e-3, epochs=100, k=8):
+    # select numeric features, align columns
+    feat_cols = train_df.drop(columns=["bug"]).select_dtypes(include=["number"]).columns.tolist()
+    X_tr_raw = train_df[feat_cols].values.astype(np.float32)
+    y_tr_raw = train_df["bug"].values
+    if not set(np.unique(y_tr_raw)).issubset({0,1}):
+        y_tr_raw = (y_tr_raw > 0).astype(int)
+
+    X_te_raw = test_df[feat_cols].values.astype(np.float32)
+    y_te = test_df["bug"].values
+    if not set(np.unique(y_te)).issubset({0,1}):
+        y_te = (y_te > 0).astype(int)
+
+    # impute+scale using TRAIN project only
+    X_tr_sc, imp, sc = fit_transform_train(X_tr_raw)
+    X_te_sc = transform_test(X_te_raw, imp, sc)
+
+    # build graphs
+    g_tr = build_knn_graph(X_tr_sc, y_tr_raw, k=k)
+    g_te = build_knn_graph(X_te_sc, y_te,     k=k)
+
+    # create a small validation split on train nodes (for monitoring only)
+    y_tr_np = y_tr_raw.astype(int)
+    idx_all = np.arange(len(y_tr_np))
+    tr_idx, va_idx = train_test_split(idx_all, test_size=0.2, stratify=y_tr_np, random_state=SEED)
+    tr_idx = torch.tensor(tr_idx, dtype=torch.long)
+    va_idx = torch.tensor(va_idx, dtype=torch.long)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    g_tr = g_tr.to(device)
+    g_te = g_te.to(device)
+
+    model = GCNNode(g_tr.num_features, hidden=hidden, dropout=0.35).to(device)
+    opt   = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
+    bce   = nn.BCEWithLogitsLoss()
+
+    history = {"acc":[], "val_acc":[], "loss":[], "val_loss":[]}
+
+    # --- TRAIN: force full 'epochs' with explicit per-epoch prints -------------
+    epochs_ran = 0
+    for ep in range(1, epochs+1):
+        model.train()
+        opt.zero_grad()
+        logits = model(g_tr.x, g_tr.edge_index)
+        loss   = bce(logits[tr_idx], g_tr.y[tr_idx])
+        loss.backward(); opt.step()
+
+        # metrics (train + val) — for monitoring only
+        model.eval()
+        with torch.no_grad():
+            tr_probs = torch.sigmoid(logits[tr_idx]).cpu().numpy()
+            tr_pred  = (tr_probs >= 0.5).astype(int)
+            tr_true  = g_tr.y[tr_idx].cpu().numpy().astype(int)
+            tr_acc   = (tr_pred == tr_true).mean()
+
+            va_logits = model(g_tr.x, g_tr.edge_index)
+            va_probs  = torch.sigmoid(va_logits[va_idx]).cpu().numpy()
+            va_pred   = (va_probs >= 0.5).astype(int)
+            va_true   = g_tr.y[va_idx].cpu().numpy().astype(int)
+            val_acc   = (va_pred == va_true).mean()
+            val_loss  = bce(va_logits[va_idx], g_tr.y[va_idx]).item()
+
+        history["acc"].append(tr_acc)
+        history["val_acc"].append(val_acc)
+        history["loss"].append(loss.item())
+        history["val_loss"].append(val_loss)
+
+        epochs_ran += 1
+        print(f"Finished epoch {ep}/{epochs}")
+
+    # hard verification that all epochs ran
+    if epochs_ran != epochs or len(history["loss"]) != epochs:
+        raise RuntimeError(f"Expected {epochs} epochs, but ran {epochs_ran}.")
+    print(f"[VERIFY] Training completed: {epochs_ran}/{epochs} epochs ran.")
+
+    # plots
+    plt.figure()
+    plt.plot(history["acc"], label="train")
+    plt.plot(history["val_acc"], label="val")
+    plt.title("GCN Accuracy"); plt.xlabel("Epoch"); plt.ylabel("Acc"); plt.legend(); plt.grid(True); plt.show()
+
+    plt.figure()
+    plt.plot(history["loss"], label="train")
+    plt.plot(history["val_loss"], label="val")
+    plt.title("GCN Loss"); plt.xlabel("Epoch"); plt.ylabel("Loss"); plt.legend(); plt.grid(True); plt.show()
+
+    # Test on the OTHER project's graph
+    model.eval()
+    with torch.no_grad():
+        te_logits = model(g_te.x, g_te.edge_index)
+        te_probs  = torch.sigmoid(te_logits).cpu().numpy()
+        te_pred   = (te_probs >= 0.5).astype(int)
+        te_true   = g_te.y.cpu().numpy().astype(int)
+
+    auc = roc_auc_score(te_true, te_probs) if len(np.unique(te_true))>1 else np.nan
+    acc = accuracy_score(te_true, te_pred)
+    prec, rec, f1, _ = precision_recall_fscore_support(te_true, te_pred, average="binary", zero_division=0)
+    cm = confusion_matrix(te_true, te_pred)
+
+    # confusion matrix plot
+    plt.figure()
+    plt.imshow(cm, interpolation='nearest')
+    plt.title("GCN Confusion Matrix (Test Project)")
+    plt.xlabel("Predicted"); plt.ylabel("True")
+    ticks = np.arange(2)
+    plt.xticks(ticks, ["No Defect","Defect"])
+    plt.yticks(ticks, ["No Defect","Defect"])
+    for i in range(2):
+        for j in range(2):
+            plt.text(j, i, cm[i, j], ha="center", va="center")
+    plt.colorbar(); plt.grid(False); plt.show()
+
+    print(f"AUC={auc:.3f}  Acc={acc:.3f}  Prec={prec:.3f}  Rec={rec:.3f}  F1={f1:.3f}")
+    print("\nClassification report (test project):\n",
+          classification_report(te_true, te_pred, digits=4, zero_division=0))
+    return {"auc":auc, "acc":acc, "prec":prec, "rec":rec, "f1":f1}
+
+# ---------------------------
+# 4) Run CPDP for ALL project pairs (train one → test another)
+# ---------------------------
+projects = sorted(df_all["__source__"].unique())
+results = []
+
+for train_proj in projects:
+    for test_proj in projects:
+        if train_proj == test_proj:
+            continue
+        tr_df = df_all[df_all["__source__"] == train_proj].copy()
+        te_df = df_all[df_all["__source__"] == test_proj].copy()
+
+        # sanity: ensure both have enough rows/classes
+        if tr_df["bug"].nunique() < 2 or te_df["bug"].nunique() < 2:
+            print(f"Skipping {train_proj} -> {test_proj} (not enough class variety)")
+            continue
+        if len(tr_df) < 30 or len(te_df) < 30:
+            print(f"Skipping {train_proj} -> {test_proj} (too few samples)")
+            continue
+
+        print("\n" + "="*70)
+        print(f"TRAIN: {train_proj}  →  TEST: {test_proj}")
+        print("="*70)
+        # epochs fixed to 100; no patience/early-stop args
+        metrics = train_one_to_one_gcn(tr_df, te_df, hidden=64, lr=1e-3, epochs=100, k=8)
+        metrics.update({"train": train_proj, "test": test_proj})
+        results.append(metrics)
+
+# Summary table
+if results:
+    df_cpdp = pd.DataFrame(results)
+    print("\nCPDP Summary (GCN, k-NN graphs):")
+    print(df_cpdp.groupby(["train"]).agg({"auc":"mean","acc":"mean","f1":"mean"}).sort_values("f1", ascending=False))
+else:
+    print("No valid project pairs evaluated (check class balance / sample sizes).")
+
+
+# ===== Build & Train a model for SHAP (binary classification) =====
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
+# --- Make sure X_train / X_test / y_train / y_test already exist ---
+# If they are pandas, we'll convert to numpy + infer n_features below.
+
+# 0) Numpy + feature names
+if hasattr(X_train, "values"):
+    X_train_np = X_train.values.astype(np.float32)
+    feat_names = list(X_train.columns)
+else:
+    X_train_np = np.asarray(X_train, dtype=np.float32)
+    feat_names = [f"f{i}" for i in range(X_train_np.shape[1])]
+
+if hasattr(X_test, "values"):
+    X_test_np = X_test.values.astype(np.float32)
+else:
+    X_test_np = np.asarray(X_test, dtype=np.float32)
+
+y_train_np = np.asarray(y_train).astype(np.float32).ravel()
+y_test_np  = np.asarray(y_test).astype(np.float32).ravel()
+
+n_features = X_train_np.shape[1]
+
+# 1) Reshape to (N, F, 1) for sequence-style models (CNN/LSTM)
+X_train_seq = X_train_np.reshape(-1, n_features, 1)
+X_test_seq  = X_test_np.reshape(-1, n_features, 1)
+
+# 2) Pick model type: "cnn" or "lstm"
+MODEL_TYPE = "cnn"  # change to "lstm" if you prefer
+
+def build_cnn_model(input_shape):
+    m = models.Sequential([
+        layers.Input(shape=input_shape),
+        layers.Conv1D(64, 3, activation='relu'),
+        layers.MaxPooling1D(pool_size=2),
+        layers.Conv1D(64, 3, activation='relu'),
+        layers.GlobalMaxPooling1D(),
+        layers.Dense(64, activation='relu'),
+        layers.Dense(1, activation='sigmoid')  # binary
+    ])
+    m.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    return m
+
+def build_lstm_model(input_shape):
+    m = models.Sequential([
+        layers.Input(shape=input_shape),
+        layers.LSTM(64),
+        layers.Dense(64, activation='relu'),
+        layers.Dense(1, activation='sigmoid')  # binary
+    ])
+    m.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    return m
+
+# 3) Build chosen model
+if MODEL_TYPE.lower() == "lstm":
+    model = build_lstm_model((n_features, 1))
+else:
+    model = build_cnn_model((n_features, 1))  # default
+
+# 4) Train for full 100 epochs and verify
+class EpochCounter(tf.keras.callbacks.Callback):
+    def __init__(self, total_epochs):
+        super().__init__()
+        self.total_epochs = total_epochs
+        self.seen = 0
+    def on_epoch_end(self, epoch, logs=None):
+        self.seen += 1
+        print(f"Finished epoch {epoch+1}/{self.total_epochs}")
+    def on_train_end(self, logs=None):
+        if self.seen != self.total_epochs:
+            raise RuntimeError(f"Expected {self.total_epochs} epochs, but ran {self.seen}.")
+
+EPOCHS = 100
+counter = EpochCounter(EPOCHS)
+
+history = model.fit(
+    X_train_seq, y_train_np,
+    epochs=EPOCHS,
+    batch_size=32,
+    validation_split=0.1,
+    callbacks=[counter],   # no EarlyStopping here
+    verbose=0
+)
+print(f"[VERIFY] Trained {len(history.epoch)}/{EPOCHS} epochs.")
+
+# Optional: quick check
+_ = model.evaluate(X_test_seq, y_test_np, verbose=0)
+
+
+# !pip install -q shap lime
+
+import numpy as np
+import pandas as pd
+import shap
+import matplotlib.pyplot as plt
+
+# 0) Numpy + feature names
+if hasattr(X_train, "values"):
+    X_train_np = X_train.values.astype(np.float32)
+    feat_names = list(X_train.columns)
+else:
+    X_train_np = np.asarray(X_train, dtype=np.float32)
+    feat_names = [f"f{i}" for i in range(X_train_np.shape[1])]
+
+if hasattr(X_test, "values"):
+    X_test_np = X_test.values.astype(np.float32)
+else:
+    X_test_np = np.asarray(X_test, dtype=np.float32)
+
+n_features = X_train_np.shape[1]
+
+# 1) Background for SHAP (2-D), model wrapper will reshape to 3-D
+rng = np.random.default_rng(42)
+bg_size = min(200, len(X_train_np))
+bg_idx = rng.choice(len(X_train_np), size=bg_size, replace=False)
+background_2d = X_train_np[bg_idx]                        # (bg_size, n_features)
+
+# 2) Keras predict wrapper: reshape (N, F) -> (N, F, 1) for CNN/LSTM
+def shap_pred_fn(X):
+    X = np.asarray(X, dtype=np.float32)
+    if X.ndim == 1:
+        X = X.reshape(1, -1)
+    # reshape to 3D for sequence models
+    X3 = X.reshape(X.shape[0], n_features, 1)
+    P = model.predict(X3, verbose=0)
+    P = np.asarray(P)
+
+    # return positive-class probabilities as 1-D
+    if P.ndim == 1:
+        return P
+    if P.shape[-1] == 1:        # sigmoid
+        return P.ravel()
+    return P[:, 1]              # softmax -> class-1
+
+# 3) Build explainer and compute SHAP
+sample_size = min(300, len(X_test_np))
+X_sample_2d = X_test_np[:sample_size]                     # (m, n_features)
+
+explainer = shap.KernelExplainer(shap_pred_fn, background_2d, link="logit")
+shap_vals = explainer.shap_values(X_sample_2d, nsamples="auto")
+
+# 4) Normalize SHAP output shape
+if isinstance(shap_vals, list):
+    shap_arr = np.asarray(shap_vals[-1])  # class-1 component
+else:
+    shap_arr = np.asarray(shap_vals)
+
+if shap_arr.ndim == 1:
+    shap_arr = shap_arr.reshape(-1, 1)
+
+# Align cols just in case
+if shap_arr.shape[1] != n_features:
+    if shap_arr.shape[1] < n_features:
+        pad = np.zeros((shap_arr.shape[0], n_features - shap_arr.shape[1]))
+        shap_arr = np.hstack([shap_arr, pad])
+    else:
+        shap_arr = shap_arr[:, :n_features]
+
+# 5) Global importance bar chart
+mean_abs = np.abs(shap_arr).mean(axis=0)
+imp = pd.Series(mean_abs, index=feat_names).sort_values(ascending=False)
+
+top_k = min(20, len(imp))
+plt.figure(figsize=(8, max(4, 0.35*top_k)))
+imp.head(top_k)[::-1].plot(kind="barh")
+plt.title(f"Top-{top_k} SHAP Feature Importances")
+plt.xlabel("mean(|SHAP|)")
+plt.tight_layout()
+plt.show()
+
+# Optional: SHAP summary plot (works with 2-D features; wrapper handles 3-D for the model call)
+try:
+    shap.summary_plot(shap_arr, features=X_sample_2d, feature_names=feat_names, show=True)
+except Exception as e:
+    print("Skipping summary plot:", e)
+
+
+import os, json, math, random, numpy as np, torch, torch.nn.functional as F
+from torch import nn
+from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
+from sklearn.metrics import roc_auc_score, accuracy_score
+
+# Reproducibility
+SEED = 42
+random.seed(SEED); np.random.seed(SEED); torch.manual_seed(SEED)
+
+# Configs
+NUM_NODE_FEATURES = 20
+NUM_NODES_PER_GRAPH = 12
+NUM_TRAIN, NUM_VAL, NUM_TEST = 240, 80, 80
+BATCH_SIZE, EPOCHS, LR, DROPOUT = 16, 100, 1e-3, 0.2     # <-- 100 epochs
+SAVE_DIR, CFG_PATH = "/content/checkpoints", "/content/gcn_config.json"
+os.makedirs(SAVE_DIR, exist_ok=True)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Device:", device)
+
+class GCN(nn.Module):
+    def __init__(self, num_node_features: int, h1=32, h2=64, p_drop=0.2):
+        super().__init__()
+        self.conv1 = GCNConv(num_node_features, h1)
+        self.conv2 = GCNConv(h1, h2)
+        self.lin   = nn.Linear(h2, 1)
+        self.p_drop = p_drop
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=self.p_drop, training=self.training)
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return torch.sigmoid(self.lin(x)).view(-1)
+
+def ring_edges(n):
+    src, dst = [], []
+    for i in range(n):
+        j = (i + 1) % n
+        src += [i, j]; dst += [j, i]
+    return torch.tensor([src, dst], dtype=torch.long)
+
+def make_graph(num_nodes, num_features, label):
+    mu = 0.5 if label == 1 else 0.0
+    x = torch.randn((num_nodes, num_features), dtype=torch.float32) + mu
+    e = ring_edges(num_nodes)
+    y = torch.tensor([label], dtype=torch.float32)
+    return Data(x=x, edge_index=e, y=y)
+
+def build_split(n_train, n_val, n_test, n_nodes, n_feats):
+    def build(n):
+        n1 = n//2; n0 = n - n1
+        graphs = [make_graph(n_nodes, n_feats, 0) for _ in range(n0)] + \
+                 [make_graph(n_nodes, n_feats, 1) for _ in range(n1)]
+        random.shuffle(graphs)
+        return graphs
+    return build(n_train), build(n_val), build(n_test)
+
+def run_epoch(model, loader, criterion, optimizer=None):
+    model.train(optimizer is not None)
+    losses, probs, labels = [], [], []
+    for batch in loader:
+        batch = batch.to(device)
+        out = model(batch.x, batch.edge_index, batch.batch)
+        loss = criterion(out, batch.y.view(-1))
+        if optimizer is not None:
+            optimizer.zero_grad(); loss.backward(); optimizer.step()
+        losses.append(loss.item())
+        probs.extend(out.detach().cpu().numpy().tolist())
+        labels.extend(batch.y.view(-1).detach().cpu().numpy().tolist())
+    avg_loss = float(np.mean(losses))
+    try:
+        auc = roc_auc_score(labels, probs)
+    except ValueError:
+        auc = float("nan")
+    acc = accuracy_score(labels, (np.array(probs) >= 0.5).astype(int))
+    return avg_loss, auc, acc
+
+# Prepare data & loaders
+train_graphs, val_graphs, test_graphs = build_split(NUM_TRAIN, NUM_VAL, NUM_TEST,
+                                                    NUM_NODES_PER_GRAPH, NUM_NODE_FEATURES)
+train_loader = DataLoader(train_graphs, batch_size=BATCH_SIZE, shuffle=True)
+val_loader   = DataLoader(val_graphs,   batch_size=BATCH_SIZE)
+test_loader  = DataLoader(test_graphs,  batch_size=BATCH_SIZE)
+
+# Model/optim
+model = GCN(NUM_NODE_FEATURES, h1=32, h2=64, p_drop=DROPOUT).to(device)
+opt = torch.optim.Adam(model.parameters(), lr=LR)
+crit = nn.BCELoss()
+
+best_auc, best_path = -math.inf, os.path.join(SAVE_DIR, "gcn_best.pt")
+
+print("\n--- Training (100 epochs, no early stopping) ---")
+epochs_ran = 0
+for epoch in range(1, EPOCHS+1):
+    tr_loss, tr_auc, tr_acc = run_epoch(model, train_loader, crit, optimizer=opt)
+    vl_loss, vl_auc, vl_acc = run_epoch(model, val_loader,   crit, optimizer=None)
+
+    print(f"Epoch {epoch:03d} | "
+          f"Train loss {tr_loss:.4f} auc {tr_auc if not np.isnan(tr_auc) else float('nan'):.3f} acc {tr_acc:.3f} || "
+          f"Val loss {vl_loss:.4f} auc {vl_auc if not np.isnan(vl_auc) else float('nan'):.3f} acc {vl_acc:.3f}")
+
+    # Keep best checkpoint by validation AUC (no stopping)
+    if (not np.isnan(vl_auc)) and (vl_auc > best_auc):
+        best_auc = vl_auc
+        torch.save(model.state_dict(), best_path)
+
+    epochs_ran += 1
+
+# Explicit verification
+if epochs_ran != EPOCHS:
+    raise RuntimeError(f"Expected {EPOCHS} epochs, but ran {epochs_ran}.")
+print(f"[VERIFY] Training completed: {epochs_ran}/{EPOCHS} epochs ran.")
+print(f"Best checkpoint path: {best_path} (Val AUC={best_auc:.3f})")
+
+# Save minimal config
+cfg = {"num_node_features": NUM_NODE_FEATURES, "hidden1": 32, "hidden2": 64,
+       "dropout": DROPOUT, "threshold": 0.5}
+with open(CFG_PATH, "w") as f:
+    json.dump(cfg, f, indent=2)
+print(f"Config saved to: {CFG_PATH}")
+
+# Test the best
+best = GCN(NUM_NODE_FEATURES, 32, 64, DROPOUT).to(device)
+best.load_state_dict(torch.load(best_path, map_location=device))
+test_loss, test_auc, test_acc = run_epoch(best, test_loader, crit, optimizer=None)
+print(f"\n--- Test ---\nLoss={test_loss:.4f} | AUC={test_auc if not np.isnan(test_auc) else float('nan'):.3f} | Acc={test_acc:.3f}")
+
+
+import json, torch
+from torch import nn
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.data import Data
+import numpy as np
+
+with open("/content/gcn_config.json") as f:
+    cfg = json.load(f)
+
+class GCN(nn.Module):
+    def __init__(self, num_node_features: int, h1=32, h2=64, p_drop=0.2):
+        super().__init__()
+        self.conv1 = GCNConv(num_node_features, h1)
+        self.conv2 = GCNConv(h1, h2)
+        self.lin   = nn.Linear(h2, 1)
+        self.p_drop = p_drop
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=self.p_drop, training=self.training)
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)
+        return torch.sigmoid(self.lin(x)).view(-1)
+
+def ring_edges(n):
+    src, dst = [], []
+    for i in range(n):
+        j = (i+1) % n
+        src += [i, j]; dst += [j, i]
+    return torch.tensor([src, dst], dtype=torch.long)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = GCN(cfg["num_node_features"], cfg["hidden1"], cfg["hidden2"], cfg["dropout"]).to(device)
+model.load_state_dict(torch.load("/content/checkpoints/gcn_best.pt", map_location=device))
+model.eval()
+
+num_nodes = 10
+x = torch.randn((num_nodes, cfg["num_node_features"]), dtype=torch.float32, device=device)
+edge_index = ring_edges(num_nodes).to(device)
+batch = torch.zeros(num_nodes, dtype=torch.long, device=device)
+
+with torch.no_grad():
+    prob = model(x, edge_index, batch).item()
+label = int(prob >= cfg["threshold"])
+print(f"prob={prob:.4f} | label={label}")
+
+
+# ================================================================
+# Software Defect Prediction (18 CSVs) — 1D-CNN & LSTM Benchmarks
+# Fixes: stratified validation split, no EarlyStopping (all epochs),
+#        ROC curves for both models, PR-AUC, F1-opt threshold report.
+# Still includes: cleaning, FE, SMOTE, reports, confusion matrices,
+#        accuracy/loss curves, summary table.
+# ================================================================
+
+import os
+import gc
+import math
+import random
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    classification_report, confusion_matrix, roc_auc_score, average_precision_score,
+    accuracy_score, precision_recall_fscore_support, precision_recall_curve, roc_curve
+)
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+
+# Imbalance handling
+try:
+    from imblearn.over_sampling import SMOTE, RandomOverSampler
+except:
+    !pip -q install imbalanced-learn
+    from imblearn.over_sampling import SMOTE, RandomOverSampler
+
+# Deep learning (TF/Keras)
+try:
+    import tensorflow as tf
+except:
+    !pip -q install tensorflow
+    import tensorflow as tf
+
+from tensorflow.keras import layers, models, callbacks
+
+# ---------------------------
+# Reproducibility
+# ---------------------------
+SEED = 42
+np.random.seed(SEED)
+random.seed(SEED)
+tf.random.set_seed(SEED)
+
+# ================================================================
+# 1) File list
+# ================================================================
+file_names = [
+    "data_prop-6.csv","data_arc.csv","jedit-4.2.csv","log4j-1.1.csv","ant-1.7.csv",
+    "synapse-1.0.csv","data_ivy-2.0.csv","synapse-1.2.csv","jedit-3.2.csv","xerces-1.3.csv",
+    "data_redaktor.csv","xerces-1.2.csv","velocity-1.6.csv","lucene-2.0.csv","xalan-2.4.csv",
+    "camel-1.0.csv","camel-1.6.csv","poi-2.0.csv",
+]
+
+# ================================================================
+# 2) Robust CSV loader with uniform cleaning
+# ================================================================
+def load_and_basic_clean(path):
+    df = pd.read_csv(path)
+
+    # Drop obvious non-feature metadata if present
+    drop_candidates = ["version", "project", "file", "module", "class", "name"]
+    to_drop = [c for c in drop_candidates if c in df.columns]
+    if to_drop:
+        df = df.drop(columns=to_drop)
+
+    # Coerce to numeric
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Remove all-NaN columns & duplicates
+    df = df.dropna(axis=1, how="all").drop_duplicates()
+
+    # Normalize 'bug' column name
+    rename_map = {}
+    for col in df.columns:
+        if col.lower() == "bug":
+            rename_map[col] = "bug"
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
+    if "bug" not in df.columns:
+        raise ValueError(f"'bug' column not found in {path}")
+
+    # Keep rows where target exists, and replace infs
+    df = df.dropna(subset=["bug"]).replace([np.inf, -np.inf], np.nan)
+    return df
+
+frames, missing = [], []
+for fn in file_names:
+    if not os.path.exists(fn):
+        missing.append(fn)
+        continue
+    try:
+        df = load_and_basic_clean(fn)
+        frames.append(df)
+        print(f"Loaded ok: {fn} -> shape {df.shape}")
+    except Exception as e:
+        print(f"[WARN] Failed to load {fn}: {e}")
+
+if missing:
+    print("\n[WARNING] Missing files:\n", "\n".join(missing))
+if not frames:
+    raise RuntimeError("No datasets loaded. Ensure CSVs are present.")
+
+# ================================================================
+# 3) Column alignment across datasets (intersection)
+# ================================================================
+common_cols = set(frames[0].columns)
+for df in frames[1:]:
+    common_cols &= set(df.columns)
+common_cols = sorted(list(common_cols))
+if "bug" not in common_cols:
+    raise RuntimeError("'bug' must be common across all frames.")
+
+combined = pd.concat([df[common_cols].copy() for df in frames], axis=0, ignore_index=True)
+print("\nCombined shape BEFORE engineering:", combined.shape)
+
+# ================================================================
+# 4) Lightweight feature engineering
+# ================================================================
+def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
+    fe = df.copy()
+    eps = 1e-6
+
+    if set(["rfc", "wmc"]).issubset(fe.columns):
+        fe["rfc_per_wmc"] = fe["rfc"] / (fe["wmc"].abs() + eps)
+
+    if set(["cbo", "ca", "ce"]).issubset(fe.columns):
+        fe["coupling_ratio"] = fe["cbo"] / (fe["ca"].abs() + fe["ce"].abs() + eps)
+
+    if set(["max_cc", "amc"]).issubset(fe.columns):
+        fe["complexity_density"] = fe["max_cc"] / (fe["amc"].abs() + 1.0)
+
+    if set(["lcom", "rfc"]).issubset(fe.columns):
+        fe["lcom_over_rfc"] = fe["lcom"] / (fe["rfc"].abs() + eps)
+
+    if set(["avg_cc", "wmc"]).issubset(fe.columns):
+        fe["avgcc_per_wmc"] = fe["avg_cc"] / (fe["wmc"].abs() + eps)
+
+    fe = fe.replace([np.inf, -np.inf], np.nan)
+    return fe
+
+combined = add_engineered_features(combined)
+
+# ================================================================
+# 5) Train/Test split, Imputation, Scaling, SMOTE (train only)
+# ================================================================
+# Binarize target if not already {0,1}
+y_raw = combined["bug"].copy()
+y = (y_raw > 0).astype(int) if not set(pd.unique(y_raw.dropna())) <= {0, 1} else y_raw.astype(int)
+
+X = combined.drop(columns=["bug"]).copy()
+numeric_cols = [c for c in X.columns if np.issubdtype(X[c].dtype, np.number)]
+X = X[numeric_cols]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=SEED
+)
+
+imputer = SimpleImputer(strategy="median")
+scaler  = StandardScaler()
+
+X_train_imp = imputer.fit_transform(X_train)
+X_test_imp  = imputer.transform(X_test)
+
+X_train_s = scaler.fit_transform(X_train_imp)
+X_test_s  = scaler.transform(X_test_imp)
+
+# SMOTE (or ROS fallback) on TRAIN only
+def rebalance_train_features(X_np, y_ser):
+    try:
+        k = min(5, max(1, y_ser.value_counts().min() - 1))
+        sm = SMOTE(random_state=SEED, k_neighbors=k)
+        X_res, y_res = sm.fit_resample(X_np, y_ser)
+        method = "SMOTE"
+    except Exception as e:
+        ros = RandomOverSampler(random_state=SEED)
+        X_res, y_res = ros.fit_resample(X_np, y_ser)
+        method = "RandomOverSampler"
+    return X_res, y_res, method
+
+X_train_bal, y_train_bal, balance_method = rebalance_train_features(X_train_s, y_train)
+print(f"\nClass balance method used: {balance_method}")
+print("Class distribution (train before):")
+print(y_train.value_counts(normalize=True).rename('proportion').round(3))
+print("Class distribution (train after):")
+print(pd.Series(y_train_bal, name='bug').value_counts(normalize=True).round(3))
+
+# ================================================================
+# 6) Prepare data for 1D-CNN/LSTM (sequence of features)
+# ================================================================
+n_features = X_train_bal.shape[1]
+Xtr_seq_full = X_train_bal.reshape((-1, n_features, 1)).astype(np.float32)
+Xte_seq      = X_test_s.reshape((-1, n_features, 1)).astype(np.float32)
+ytr_full     = y_train_bal.values if isinstance(y_train_bal, pd.Series) else y_train_bal
+yte          = y_test.values
+
+# ---------- Stratified validation split (FIX for val_auc) ----------
+Xtr_seq, Xval_seq, ytr, yval = train_test_split(
+    Xtr_seq_full, ytr_full, test_size=0.15, stratify=ytr_full, random_state=SEED
+)
+
+# ================================================================
+# 7) Build models
+# ================================================================
+def build_cnn1d(input_len):
+    inp = layers.Input(shape=(input_len, 1))
+    x = layers.Conv1D(32, 3, padding="same", activation="relu")(inp)
+    x = layers.BatchNormalization()(x)
+    x = layers.Conv1D(64, 3, padding="same", activation="relu")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.GlobalAveragePooling1D()(x)
+    x = layers.Dropout(0.3)(x)
+    x = layers.Dense(64, activation="relu")(x)
+    x = layers.Dropout(0.2)(x)
+    out = layers.Dense(1, activation="sigmoid")(x)
+    model = models.Model(inp, out, name="cnn1d_sdp")
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+        loss="binary_crossentropy",
+        metrics=["accuracy", tf.keras.metrics.AUC(name="auc"),
+                 tf.keras.metrics.Precision(name="precision"),
+                 tf.keras.metrics.Recall(name="recall")]
+    )
+    return model
+
+def build_lstm(input_len):
+    inp = layers.Input(shape=(input_len, 1))
+    x = layers.LSTM(64, return_sequences=False)(inp)
+    x = layers.Dropout(0.3)(x)
+    x = layers.Dense(64, activation="relu")(x)
+    x = layers.Dropout(0.2)(x)
+    out = layers.Dense(1, activation="sigmoid")(x)
+    model = models.Model(inp, out, name="lstm_sdp")
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+        loss="binary_crossentropy",
+        metrics=["accuracy", tf.keras.metrics.AUC(name="auc"),
+                 tf.keras.metrics.Precision(name="precision"),
+                 tf.keras.metrics.Recall(name="recall")]
+    )
+    return model
+
+cnn  = build_cnn1d(n_features)
+lstm = build_lstm(n_features)
+
+cnn.summary()
+lstm.summary()
+
+# ================================================================
+# 8) Training setup (NO EarlyStopping → run all epochs)
+# ================================================================
+RLROP  = callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=6, min_lr=1e-5)
+BATCH  = 64
+EPOCHS = 120
+
+# ================================================================
+# 9) Train both models (with stratified validation DATA)
+# ================================================================
+history_cnn = cnn.fit(
+    Xtr_seq, ytr,
+    validation_data=(Xval_seq, yval),
+    epochs=EPOCHS, batch_size=BATCH,
+    callbacks=[RLROP], verbose=1
+)
+
+history_lstm = lstm.fit(
+    Xtr_seq, ytr,
+    validation_data=(Xval_seq, yval),
+    epochs=EPOCHS, batch_size=BATCH,
+    callbacks=[RLROP], verbose=1
+)
+
+# ================================================================
+# 10) Evaluation helpers (+ PR-AUC, threshold tuning)
+# ================================================================
+def evaluate_and_report(model, X_seq, y_true, title="Model", thr=0.5):
+    y_prob = model.predict(X_seq, verbose=0).ravel()
+    y_pred = (y_prob >= thr).astype(int)
+
+    roc_auc = roc_auc_score(y_true, y_prob)
+    pr_auc  = average_precision_score(y_true, y_prob)
+    acc     = accuracy_score(y_true, y_pred)
+    prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="binary", zero_division=0)
+
+    print(f"\n==== {title} @ threshold={thr:.2f} ====")
+    print(f"ROC AUC : {roc_auc:.4f} | PR AUC: {pr_auc:.4f}")
+    print(f"Accuracy: {acc:.4f} | Precision: {prec:.4f} | Recall: {rec:.4f} | F1: {f1:.4f}\n")
+    print("Classification Report:")
+    print(classification_report(y_true, y_pred, digits=4))
+
+    cm = confusion_matrix(y_true, y_pred)
+    return {"y_prob": y_prob, "y_pred": y_pred, "cm": cm,
+            "roc_auc": roc_auc, "pr_auc": pr_auc,
+            "acc": acc, "prec": prec, "rec": rec, "f1": f1}
+
+def best_f1_threshold(y_true, y_prob):
+    p, r, t = precision_recall_curve(y_true, y_prob)
+    f1 = 2*p*r/(p+r+1e-9)
+    idx = np.argmax(f1[:-1])  # last point has no threshold
+    return float(t[idx]), float(p[idx]), float(r[idx]), float(f1[idx])
+
+# Evaluate @ default threshold 0.5
+res_cnn  = evaluate_and_report(cnn, Xte_seq, yte, title="1D-CNN", thr=0.5)
+res_lstm = evaluate_and_report(lstm, Xte_seq, yte, title="LSTM",    thr=0.5)
+
+# Also show F1-opt thresholds
+for name, res in (("1D-CNN", res_cnn), ("LSTM", res_lstm)):
+    th, p, r, f1 = best_f1_threshold(yte, res["y_prob"])
+    print(f"{name} best-F1 threshold = {th:.3f} → Precision={p:.3f}, Recall={r:.3f}, F1={f1:.3f}")
+
+# ================================================================
+# 11) Plot training curves (Accuracy & Loss) for both models
+# ================================================================
+def plot_history(hist, model_name="Model"):
+    # Accuracy
+    plt.figure(figsize=(6,4))
+    plt.plot(hist.history["accuracy"], label="train_acc")
+    plt.plot(hist.history["val_accuracy"], label="val_acc")
+    plt.title(f"{model_name} Accuracy")
+    plt.xlabel("Epoch"); plt.ylabel("Accuracy")
+    plt.legend(); plt.grid(True, alpha=0.3)
+    plt.show()
+
+    # Loss
+    plt.figure(figsize=(6,4))
+    plt.plot(hist.history["loss"], label="train_loss")
+    plt.plot(hist.history["val_loss"], label="val_loss")
+    plt.title(f"{model_name} Loss")
+    plt.xlabel("Epoch"); plt.ylabel("Binary Crossentropy")
+    plt.legend(); plt.grid(True, alpha=0.3)
+    plt.show()
+
+plot_history(history_cnn, "1D-CNN")
+plot_history(history_lstm, "LSTM")
+
+# ================================================================
+# 12) Plot confusion matrices (test) for both models
+# ================================================================
+def plot_confusion_matrix(cm, classes=(0,1), title="Confusion Matrix"):
+    plt.figure(figsize=(4.6,4))
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes); plt.yticks(tick_marks, classes)
+    thresh = cm.max() / 2.0
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            plt.text(j, i, format(cm[i, j], 'd'),
+                     ha="center",
+                     color="white" if cm[i, j] > thresh else "black")
+    plt.ylabel('True label'); plt.xlabel('Predicted label')
+    plt.tight_layout()
+    plt.show()
+
+plot_confusion_matrix(res_cnn["cm"], title="Confusion Matrix - 1D-CNN (thr=0.5)")
+plot_confusion_matrix(res_lstm["cm"], title="Confusion Matrix - LSTM (thr=0.5)")
+
+# ================================================================
+# 13) ROC curves (test) for both models
+# ================================================================
+def plot_roc(y_true, y_prob, title):
+    fpr, tpr, _ = roc_curve(y_true, y_prob)
+    auc = roc_auc_score(y_true, y_prob)
+    plt.figure(figsize=(6,4))
+    plt.plot(fpr, tpr, label=f"AUC = {auc:.3f}")
+    plt.plot([0,1],[0,1], linestyle="--")
+    plt.title(title); plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
+    plt.legend(loc="lower right"); plt.grid(True, alpha=0.3)
+    plt.show()
+
+plot_roc(yte, res_cnn["y_prob"],  "ROC Curve - 1D-CNN (Test)")
+plot_roc(yte, res_lstm["y_prob"], "ROC Curve - LSTM (Test)")
+
+# (Optional) PR curves — often more informative under imbalance
+def plot_pr(y_true, y_prob, title):
+    p, r, _ = precision_recall_curve(y_true, y_prob)
+    ap = average_precision_score(y_true, y_prob)
+    plt.figure(figsize=(6,4))
+    plt.plot(r, p, label=f"AP = {ap:.3f}")
+    plt.title(title); plt.xlabel("Recall"); plt.ylabel("Precision")
+    plt.legend(loc="lower left"); plt.grid(True, alpha=0.3)
+    plt.show()
+
+plot_pr(yte, res_cnn["y_prob"],  "Precision-Recall Curve - 1D-CNN (Test)")
+plot_pr(yte, res_lstm["y_prob"], "Precision-Recall Curve - LSTM (Test)")
+
+# ================================================================
+# 14) Quick side-by-side metric summary (@thr=0.5)
+# ================================================================
+summary = pd.DataFrame({
+    "Model": ["1D-CNN", "LSTM"],
+    "ROC_AUC":   [res_cnn["roc_auc"], res_lstm["roc_auc"]],
+    "PR_AUC":    [res_cnn["pr_auc"],  res_lstm["pr_auc"]],
+    "Acc":       [res_cnn["acc"],     res_lstm["acc"]],
+    "Prec":      [res_cnn["prec"],    res_lstm["prec"]],
+    "Recall":    [res_cnn["rec"],     res_lstm["rec"]],
+    "F1":        [res_cnn["f1"],      res_lstm["f1"]],
+}).round(4)
+
+print("\n=== Test Set Summary (@ threshold 0.5) ===")
+print(summary.to_string(index=False))
+
+gc.collect();
+
+
+# ======================= Colab-ready: full pipeline with tuning & plots =======================
+# If your Colab doesn't have imbalanced-learn, uncomment the next line:
+!pip -q install imbalanced-learn==0.12.3
+
+import os, glob, random, json, math, warnings
+warnings.filterwarnings("ignore")
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (
+    roc_auc_score, average_precision_score, accuracy_score,
+    precision_recall_fscore_support, classification_report,
+    confusion_matrix, roc_curve
+)
+from sklearn.utils.class_weight import compute_class_weight
+
+try:
+    from imblearn.over_sampling import SMOTE
+except Exception:
+    SMOTE = None
+
+import tensorflow as tf
+from tensorflow.keras import layers as L, Model, callbacks, optimizers, metrics, backend as K
+
+# ----------------------- CONFIG -----------------------
+CONFIG = {
+    "data_glob": "/content/*.csv",   # e.g., "/content/data/*.csv"
+    "label_col": "bug",
+    "test_size": 0.20,
+    "val_size": 0.15,                # split from the remaining after test split
+    "random_seed": 42,
+
+    # Imbalance handling: "class_weight" (default), "smote", or "none"
+    "imbalance_strategy": "class_weight",
+
+    # Tuning & training
+    "tuner_trials_per_model": 20,    # increase for a deeper search
+    "max_epochs": 120,
+    "patience": 12,
+    "monitor_metric": "val_auc_pr",  # EarlyStopping on PR-AUC (better for imbalance)
+    "batch_sizes": [32, 64, 128],
+}
+
+# ----------------------- Repro -----------------------
+def set_seeds(seed=42):
+    random.seed(seed); np.random.seed(seed); tf.random.set_seed(seed)
+set_seeds(CONFIG["random_seed"])
+
+# ----------------------- Data utils -----------------------
+def load_and_combine(pattern, label_col):
+    paths = sorted(glob.glob(pattern))
+    if not paths:
+        raise FileNotFoundError(f"No CSVs matched {pattern}")
+    frames = []
+    for p in paths:
+        try:
+            df = pd.read_csv(p)
+            if label_col in df.columns:
+                frames.append(df)
+                print(f"Loaded ok: {os.path.basename(p)} -> shape {tuple(df.shape)}")
+        except Exception as e:
+            print(f"Skipped {p}: {e}")
+    data = pd.concat(frames, axis=0, ignore_index=True)
+    print(f"\nCombined shape BEFORE engineering: {tuple(data.shape)}")
+    return data
+
+def basic_clean(df, label_col):
+    # Keep numeric columns (incl. label)
+    num = df.select_dtypes(include=[np.number]).copy()
+    if label_col not in num.columns:
+        raise ValueError(f"Label column '{label_col}' not found.")
+    # Drop rows with missing label
+    num = num.dropna(subset=[label_col]).reset_index(drop=True)
+    # Fill NaNs in features
+    for c in num.columns:
+        if c != label_col and num[c].isna().any():
+            num[c] = num[c].fillna(num[c].median())
+    # Enforce binary 0/1
+    num[label_col] = (num[label_col] > 0).astype(int)
+    return num
+
+def make_splits(df, label_col, test_size=0.2, val_size=0.15, seed=42):
+    X = df.drop(columns=[label_col]).values.astype(np.float32)
+    y = df[label_col].values.astype(int)
+    X_trainval, X_test, y_trainval, y_test = train_test_split(
+        X, y, test_size=test_size, stratify=y, random_state=seed
+    )
+    val_frac_of_trainval = val_size / (1 - test_size)
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_trainval, y_trainval, test_size=val_frac_of_trainval,
+        stratify=y_trainval, random_state=seed
+    )
+    return X_train, y_train, X_val, y_val, X_test, y_test
+
+def scale_fit_transform(X_train, X_val, X_test):
+    scaler = StandardScaler()
+    X_train_s = scaler.fit_transform(X_train)
+    X_val_s   = scaler.transform(X_val)
+    X_test_s  = scaler.transform(X_test)
+    return X_train_s, X_val_s, X_test_s, scaler
+
+def maybe_smote(X, y, seed=42):
+    if SMOTE is None:
+        print("SMOTE not available; install imbalanced-learn.")
+        return X, y
+    sm = SMOTE(random_state=seed)
+    return sm.fit_resample(X, y)
+
+def class_weights(y):
+    classes = np.array([0,1])
+    cw = compute_class_weight(class_weight="balanced", classes=classes, y=y)
+    return {0: float(cw[0]), 1: float(cw[1])}
+
+def to_keras_1d(X):
+    return X[..., None]  # (N, F) -> (N, F, 1)
+
+# ----------------------- Models -----------------------
+def build_cnn1d(input_len, hp):
+    inputs = L.Input(shape=(input_len, 1))
+    x = inputs
+    x = L.Conv1D(hp["filters1"], kernel_size=hp["kernel1"], padding="same")(x)
+    x = L.BatchNormalization()(x); x = L.ReLU()(x)
+    x = L.Conv1D(hp["filters2"], kernel_size=hp["kernel2"], padding="same")(x)
+    x = L.BatchNormalization()(x); x = L.ReLU()(x)
+    x = L.GlobalAveragePooling1D()(x)
+    if hp["dropout"] > 0: x = L.Dropout(hp["dropout"])(x)
+    x = L.Dense(hp["dense_units"], activation="relu")(x)
+    if hp["dropout"] > 0: x = L.Dropout(hp["dropout"])(x)
+    outputs = L.Dense(1, activation="sigmoid")(x)
+    model = Model(inputs, outputs, name="cnn1d_tuned")
+    model.compile(
+        optimizer=optimizers.Adam(learning_rate=hp["lr"]),
+        loss="binary_crossentropy",
+        metrics=[
+            metrics.AUC(name="auc_roc", curve="ROC"),
+            metrics.AUC(name="auc_pr", curve="PR"),
+            metrics.Precision(name="precision"),
+            metrics.Recall(name="recall"),
+            metrics.BinaryAccuracy(name="accuracy"),
+        ],
+    )
+    return model
+
+def build_lstm(input_len, hp):
+    inputs = L.Input(shape=(input_len, 1))
+    core = L.LSTM(hp["lstm_units"])
+    x = L.Bidirectional(core)(inputs) if hp["bidirectional"] else core(inputs)
+    if hp["dropout"] > 0: x = L.Dropout(hp["dropout"])(x)
+    x = L.Dense(hp["dense_units"], activation="relu")(x)
+    if hp["dropout"] > 0: x = L.Dropout(hp["dropout"])(x)
+    outputs = L.Dense(1, activation="sigmoid")(x)
+    model = Model(inputs, outputs, name="lstm_tuned")
+    model.compile(
+        optimizer=optimizers.Adam(learning_rate=hp["lr"]),
+        loss="binary_crossentropy",
+        metrics=[
+            metrics.AUC(name="auc_roc", curve="ROC"),
+            metrics.AUC(name="auc_pr", curve="PR"),
+            metrics.Precision(name="precision"),
+            metrics.Recall(name="recall"),
+            metrics.BinaryAccuracy(name="accuracy"),
+        ],
+    )
+    return model
+
+# ----------------------- Hyperparam search -----------------------
+def sample_hparams(model_type, cfg):
+    if model_type == "cnn":
+        return {
+            "filters1":   random.choice([16, 32, 64]),
+            "kernel1":    random.choice([2, 3, 5]),
+            "filters2":   random.choice([32, 64, 128]),
+            "kernel2":    random.choice([2, 3, 5]),
+            "dense_units":random.choice([32, 64, 128]),
+            "dropout":    random.choice([0.0, 0.2, 0.4]),
+            "lr":         random.choice([1e-3, 5e-4, 1e-4]),
+            "batch_size": random.choice(cfg["batch_sizes"]),
+        }
+    else:
+        return {
+            "lstm_units": random.choice([32, 64, 128]),
+            "bidirectional": random.choice([True, False]),
+            "dense_units":random.choice([32, 64, 128]),
+            "dropout":    random.choice([0.0, 0.2, 0.4]),
+            "lr":         random.choice([1e-3, 5e-4, 1e-4]),
+            "batch_size": random.choice(cfg["batch_sizes"]),
+        }
+
+def train_one(model, hp, X_tr, y_tr, X_val, y_val, cfg, cw=None, verbose=0):
+    es = callbacks.EarlyStopping(
+        monitor=cfg["monitor_metric"], mode="max",
+        patience=cfg["patience"], restore_best_weights=True
+    )
+    rlrop = callbacks.ReduceLROnPlateau(
+        monitor=cfg["monitor_metric"], mode="max",
+        factor=0.5, patience=max(3, cfg["patience"]//3), min_lr=1e-6, verbose=0
+    )
+    hist = model.fit(
+        X_tr, y_tr,
+        epochs=cfg["max_epochs"],
+        batch_size=hp["batch_size"],
+        validation_data=(X_val, y_val),
+        callbacks=[es, rlrop],
+        class_weight=cw,
+        verbose=verbose
+    )
+    val_prob = model.predict(X_val, verbose=0).ravel()
+    val_auc = roc_auc_score(y_val, val_prob)
+    val_ap  = average_precision_score(y_val, val_prob)
+
+    # Tune threshold for F1 on validation
+    ths = np.linspace(0.05, 0.95, 181)
+    best = {"thr":0.5, "f1":-1, "prec":0, "rec":0, "acc":0}
+    for t in ths:
+        y_hat = (val_prob >= t).astype(int)
+        prec, rec, f1, _ = precision_recall_fscore_support(y_val, y_hat, average="binary", zero_division=0)
+        acc = accuracy_score(y_val, y_hat)
+        if f1 > best["f1"]:
+            best = {"thr":float(t), "f1":float(f1), "prec":float(prec), "rec":float(rec), "acc":float(acc)}
+
+    return {
+        "history": hist.history,
+        "val_auc": float(val_auc),
+        "val_ap":  float(val_ap),
+        "best_thr": best["thr"],
+        "best_f1": best["f1"],
+        "best_prec": best["prec"],
+        "best_rec": best["rec"],
+        "best_acc": best["acc"],
+    }
+
+def run_tuner(build_fn, model_type, X_train, y_train, X_val, y_val, cfg, cw=None, trials=20, verbose_trial=0):
+    input_len = X_train.shape[1]
+    best_pack = None
+    best_weights = None
+    best_history = None
+
+    for i in range(1, trials+1):
+        K.clear_session()
+        hp = sample_hparams(model_type, cfg)
+        model = build_fn(input_len, hp)
+        out = train_one(model, hp, X_train, y_train, X_val, y_val, cfg, cw=cw, verbose=verbose_trial)
+
+        is_better = (best_pack is None) or \
+                    (out["best_f1"] > best_pack["out"]["best_f1"]) or \
+                    (math.isclose(out["best_f1"], best_pack["out"]["best_f1"]) and out["val_ap"] > best_pack["out"]["val_ap"])
+        if is_better:
+            best_pack = {"hp": hp, "out": out}
+            best_weights = model.get_weights()
+            best_history = out["history"]
+
+        print(f"[{model_type.upper()}][{i:02d}/{trials}] "
+              f"val_AP={out['val_ap']:.4f} | val_AUC={out['val_auc']:.4f} | "
+              f"bestF1={out['best_f1']:.4f} @thr={out['best_thr']:.3f} "
+              f"(P={out['best_prec']:.3f}, R={out['best_rec']:.3f})")
+
+    print(f"\n>>> Best {model_type.upper()} HPs:", json.dumps(best_pack["hp"], indent=2))
+    print(f"    Best Val — F1={best_pack['out']['best_f1']:.4f} @thr={best_pack['out']['best_thr']:.3f} | "
+          f"AP={best_pack['out']['val_ap']:.4f} | AUC={best_pack['out']['val_auc']:.4f}")
+
+    # Rebuild final model and load the best weights
+    K.clear_session()
+    final_model = build_fn(input_len, best_pack["hp"])
+    final_model.set_weights(best_weights)
+    return final_model, best_pack["hp"], best_pack["out"]["best_thr"], best_history
+
+# ----------------------- Evaluation & plots -----------------------
+def evaluate(model, X, y, thr=0.5, tag=""):
+    prob = model.predict(X, verbose=0).ravel()
+    auc = roc_auc_score(y, prob)
+    ap  = average_precision_score(y, prob)
+
+    # 0.50 threshold
+    y_hat_05 = (prob >= 0.5).astype(int)
+    p05, r05, f05, _ = precision_recall_fscore_support(y, y_hat_05, average="binary", zero_division=0)
+    acc05 = accuracy_score(y, y_hat_05)
+
+    # tuned threshold
+    y_hat_t = (prob >= thr).astype(int)
+    pt, rt, ft, _ = precision_recall_fscore_support(y, y_hat_t, average="binary", zero_division=0)
+    acct = accuracy_score(y, y_hat_t)
+
+    print(f"\n==== {tag} @0.50 ====")
+    print(f"ROC AUC: {auc:.4f} | PR AUC: {ap:.4f}")
+    print(f"Acc: {acc05:.4f} | Prec: {p05:.4f} | Recall: {r05:.4f} | F1: {f05:.4f}")
+    print(classification_report(y, y_hat_05, digits=4))
+
+    print(f"---- {tag} @tuned thr={thr:.3f} ----")
+    print(f"Acc: {acct:.4f} | Prec: {pt:.4f} | Recall: {rt:.4f} | F1: {ft:.4f}")
+
+    return {
+        "prob": prob, "auc": auc, "ap": ap,
+        "yhat_05": y_hat_05, "acc_05": acc05, "prec_05": p05, "rec_05": r05, "f1_05": f05,
+        "yhat_t": y_hat_t, "thr": thr, "acc_t": acct, "prec_t": pt, "rec_t": rt, "f1_t": ft
+    }
+
+def plot_training_curves(history, title_prefix=""):
+    # Loss
+    plt.figure(figsize=(6,4))
+    plt.plot(history["loss"], label="loss")
+    plt.plot(history["val_loss"], label="val_loss")
+    plt.title(f"{title_prefix} Loss"); plt.xlabel("Epoch"); plt.ylabel("Loss"); plt.legend(); plt.grid(True)
+    plt.show()
+
+    # PR-AUC
+    if "auc_pr" in history and "val_auc_pr" in history:
+        plt.figure(figsize=(6,4))
+        plt.plot(history["auc_pr"], label="auc_pr")
+        plt.plot(history["val_auc_pr"], label="val_auc_pr")
+        plt.title(f"{title_prefix} PR-AUC"); plt.xlabel("Epoch"); plt.ylabel("PR-AUC"); plt.legend(); plt.grid(True)
+        plt.show()
+
+    # Accuracy
+    if "accuracy" in history and "val_accuracy" in history:
+        plt.figure(figsize=(6,4))
+        plt.plot(history["accuracy"], label="accuracy")
+        plt.plot(history["val_accuracy"], label="val_accuracy")
+        plt.title(f"{title_prefix} Accuracy"); plt.xlabel("Epoch"); plt.ylabel("Accuracy"); plt.legend(); plt.grid(True)
+        plt.show()
+
+def plot_confmat(y_true, y_pred, title="Confusion Matrix"):
+    cm = confusion_matrix(y_true, y_pred, labels=[0,1])
+    plt.figure(figsize=(4.8,4.8))
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title(title); plt.colorbar()
+    tick_marks = np.arange(2)
+    plt.xticks(tick_marks, ["0","1"]); plt.yticks(tick_marks, ["0","1"])
+    fmt = 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            plt.text(j, i, format(cm[i, j], fmt),
+                     ha="center", va="center",
+                     color="white" if cm[i, j] > thresh else "black")
+    plt.ylabel('True label'); plt.xlabel('Predicted label'); plt.tight_layout()
+    plt.show()
+
+def plot_roc(y_true, prob_dict):
+    # prob_dict: {"CNN": probs, "LSTM": probs}
+    plt.figure(figsize=(6,5))
+    for name, pr in prob_dict.items():
+        fpr, tpr, _ = roc_curve(y_true, pr)
+        auc_val = roc_auc_score(y_true, pr)
+        plt.plot(fpr, tpr, label=f"{name} (AUC={auc_val:.3f})")
+    plt.plot([0,1], [0,1], "k--", lw=1)
+    plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve (Test)"); plt.legend(); plt.grid(True)
+    plt.show()
+
+# ----------------------- MAIN -----------------------
+# 1) Load & clean
+df_raw = load_and_combine(CONFIG["data_glob"], CONFIG["label_col"])
+df = basic_clean(df_raw, CONFIG["label_col"])
+
+# 2) Splits (no leakage)
+X_train, y_train, X_val, y_val, X_test, y_test = make_splits(
+    df, CONFIG["label_col"], CONFIG["test_size"], CONFIG["val_size"], CONFIG["random_seed"]
+)
+
+print("\nClass distribution (train):")
+print(pd.Series(y_train).value_counts(normalize=True).rename("proportion"))
+
+# 3) Scale
+X_train_s, X_val_s, X_test_s, scaler = scale_fit_transform(X_train, X_val, X_test)
+
+# 4) Imbalance handling
+cw = None
+if CONFIG["imbalance_strategy"] == "smote":
+    X_train_s, y_train = maybe_smote(X_train_s, y_train, CONFIG["random_seed"])
+    print("\nApplied SMOTE to training set.")
+    print(pd.Series(y_train).value_counts(normalize=True).rename("proportion"))
+elif CONFIG["imbalance_strategy"] == "class_weight":
+    cw = class_weights(y_train)
+    print("\nUsing class weights:", cw)
+else:
+    print("\nNo rebalancing applied.")
+
+# 5) Prepare 1D tensors
+X_tr_1d = to_keras_1d(X_train_s)
+X_val_1d = to_keras_1d(X_val_s)
+X_te_1d  = to_keras_1d(X_test_s)
+input_len = X_tr_1d.shape[1]
+print(f"\nInput length (features): {input_len}")
+
+# 6) Tune & get best CNN
+cnn_model, cnn_hp, cnn_thr, cnn_hist = run_tuner(
+    build_cnn1d, "cnn", X_tr_1d, y_train, X_val_1d, y_val,
+    CONFIG, cw=cw, trials=CONFIG["tuner_trials_per_model"], verbose_trial=0
+)
+
+# 7) Tune & get best LSTM
+lstm_model, lstm_hp, lstm_thr, lstm_hist = run_tuner(
+    build_lstm, "lstm", X_tr_1d, y_train, X_val_1d, y_val,
+    CONFIG, cw=cw, trials=CONFIG["tuner_trials_per_model"], verbose_trial=0
+)
+
+# 8) Final evaluation on TEST
+print("\n================  TEST SET RESULTS  ================")
+res_cnn  = evaluate(cnn_model,  X_te_1d, y_test, thr=cnn_thr,  tag="1D-CNN")
+res_lstm = evaluate(lstm_model, X_te_1d, y_test, thr=lstm_thr, tag="LSTM")
+
+# 9) Plots — training curves
+plot_training_curves(cnn_hist,  title_prefix="CNN ")
+plot_training_curves(lstm_hist, title_prefix="LSTM ")
+
+# 10) Plots — ROC (both on one chart)
+plot_roc(y_test, {"CNN": res_cnn["prob"], "LSTM": res_lstm["prob"]})
+
+# 11) Plots — Confusion matrices (0.50 and tuned) for each model
+plot_confmat(y_test, res_cnn["yhat_05"], title="CNN — Confusion Matrix @0.50")
+plot_confmat(y_test, res_cnn["yhat_t"],  title=f"CNN — Confusion Matrix @thr={cnn_thr:.3f}")
+
+plot_confmat(y_test, res_lstm["yhat_05"], title="LSTM — Confusion Matrix @0.50")
+plot_confmat(y_test, res_lstm["yhat_t"],  title=f"LSTM — Confusion Matrix @thr={lstm_thr:.3f}")
+
+# 12) Compact summary table
+print("\n=== Test Set Summary ===")
+def row(model_name, r):
+    return {
+        "Model": model_name,
+        "ROC_AUC": round(r["auc"],4), "PR_AUC": round(r["ap"],4),
+        "Acc@0.50": round(r["acc_05"],4), "Prec@0.50": round(r["prec_05"],4),
+        "Rec@0.50": round(r["rec_05"],4), "F1@0.50": round(r["f1_05"],4),
+        "TunedThr": round(r["thr"],3),   "F1@Tuned": round(r["f1_t"],4),
+        "Acc@Tuned": round(r["acc_t"],4), "Prec@Tuned": round(r["prec_t"],4),
+        "Rec@Tuned": round(r["rec_t"],4)
+    }
+
+summary_df = pd.DataFrame([row("CNN", res_cnn), row("LSTM", res_lstm)])
+print(summary_df.to_string(index=False))
+
+
+
+----------------------------Frontedn Code------------------------------------------------------------
+
+# app.py
+import os
+import io
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch.serialization import add_safe_globals, safe_globals
+
+from torch_geometric.data import Data
+from torch_geometric.nn import GCNConv, global_mean_pool
+
+# =========================
+# Model (same as training)
+# =========================
+class GCN(nn.Module):
+    def __init__(self, num_node_features: int):
+        super().__init__()
+        self.conv1 = GCNConv(num_node_features, 32)
+        self.conv2 = GCNConv(32, 64)
+        self.fc = nn.Linear(64, 1)
+
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = F.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)          # graph-level pooling
+        out = torch.sigmoid(self.fc(x)).view(-1)
+        return out
+
+# --- Allow-list the classes that appear in your checkpoint pickles
+add_safe_globals([GCN, GCNConv])
+
+# =========================
+# Utilities
+# =========================
+def load_checkpoint_any(model_path: str, allow_unsafe: bool, map_location="cpu"):
+    """
+    Load ANY checkpoint format robustly.
+
+    1) Try weights_only=True with safe globals allow-list (safe path)
+    2) If that fails and allow_unsafe=True, try weights_only=False (UNSAFE)
+    Returns: a state dict (preferred) or an nn.Module, as saved.
+    """
+    # 1) Safe path first
+    try:
+        with safe_globals([GCN, GCNConv]):
+            obj = torch.load(model_path, map_location=map_location, weights_only=True)
+        return obj
+    except Exception as e_safe:
+        if not allow_unsafe:
+            raise RuntimeError(
+                f"Safe load failed and unsafe load is disabled.\nSafe error: {e_safe}"
+            ) from e_safe
+
+    # 2) UNSAFE fallback (only if user allowed)
+    try:
+        obj = torch.load(model_path, map_location=map_location, weights_only=False)
+        return obj
+    except Exception as e_unsafe:
+        raise RuntimeError(
+            f"Unsafe load also failed.\nUnsafe error: {e_unsafe}"
+        ) from e_unsafe
+
+
+def extract_state_dict(ckpt_obj):
+    """
+    Normalize various checkpoint shapes into a plain state_dict.
+    """
+    if isinstance(ckpt_obj, nn.Module):
+        return ckpt_obj.state_dict()
+    if isinstance(ckpt_obj, dict):
+        # lightning- / custom-style wrappers
+        if "state_dict" in ckpt_obj and isinstance(ckpt_obj["state_dict"], dict):
+            return ckpt_obj["state_dict"]
+        # plain state dict
+        # (heuristic: values are tensors or contain obvious param keys)
+        some_val = next(iter(ckpt_obj.values())) if len(ckpt_obj) else None
+        if isinstance(some_val, torch.Tensor) or some_val is None:
+            return ckpt_obj
+    raise ValueError("Unsupported checkpoint format; cannot find a state_dict.")
+
+
+def expected_in_feats_from_ckpt(model_path: str, allow_unsafe: bool) -> int:
+    """
+    Reads conv1.lin.weight from the checkpoint's state_dict to infer input feature count.
+    """
+    obj = load_checkpoint_any(model_path, allow_unsafe=allow_unsafe, map_location="cpu")
+    sd = extract_state_dict(obj)
+    w = sd.get("conv1.lin.weight", None)
+    if w is None:
+        # Some versions of PyG name underlying weight differently; try a few guesses
+        # (GCNConv wraps Linear as .lin)
+        # If not found, enumerate keys for debugging
+        keys = "\n".join(sd.keys())
+        raise KeyError("conv1.lin.weight not found in checkpoint state_dict.\nKeys:\n" + keys)
+    return w.shape[1]
+
+
+@st.cache_resource(show_spinner=False)
+def load_model(model_path: str, num_features: int, device: str, allow_unsafe: bool) -> nn.Module:
+    """
+    Instantiate model with 'num_features' and load checkpoint weights.
+    """
+    model = GCN(num_node_features=num_features).to(device)
+    obj = load_checkpoint_any(model_path, allow_unsafe=allow_unsafe, map_location=device)
+    # Try to load into the fresh instance
+    if isinstance(obj, nn.Module):
+        model.load_state_dict(obj.state_dict(), strict=False)
+    else:
+        sd = extract_state_dict(obj)
+        model.load_state_dict(sd, strict=False)
+    model.eval()
+    return model
+
+
+def parse_node_features(df: pd.DataFrame) -> pd.DataFrame:
+    return df.select_dtypes(include=[np.number]).copy()
+
+
+def align_features(num_df: pd.DataFrame, expected_k: int, warn=True) -> pd.DataFrame:
+    """
+    Trim or zero-pad numeric columns to match expected_k.
+    """
+    k = num_df.shape[1]
+    if k == expected_k:
+        return num_df
+    if k > expected_k:
+        if warn:
+            st.warning(f"Trimming features: found {k}, expected {expected_k}. Keeping first {expected_k}.")
+        return num_df.iloc[:, :expected_k].copy()
+    need = expected_k - k
+    if warn:
+        st.warning(f"Padding features: found {k}, expected {expected_k}. Adding {need} zero columns.")
+    aligned = num_df.copy()
+    for i in range(need):
+        aligned[f"pad_{i}"] = 0.0
+    return aligned
+
+
+def parse_edge_index(df: pd.DataFrame, num_nodes: int) -> torch.Tensor:
+    num_df = df.select_dtypes(include=[np.number])
+    if num_df.shape[1] < 2:
+        raise ValueError("edge_index.csv must have at least two numeric columns (src, dst).")
+    edges = num_df.iloc[:, :2].astype(int).values
+    if (edges < 0).any() or (edges >= num_nodes).any():
+        raise ValueError("edge_index contains node indices out of range.")
+    return torch.tensor(edges.T, dtype=torch.long)
+
+
+def data_from_frames(x_df: pd.DataFrame, edge_df: pd.DataFrame):
+    x = torch.tensor(x_df.values, dtype=torch.float32)
+    n = x.shape[0]
+    edge_index = parse_edge_index(edge_df, num_nodes=n)
+    batch = torch.zeros(n, dtype=torch.long)
+    return Data(x=x, edge_index=edge_index, batch=batch)
+
+
+# =========================
+# Streamlit UI
+# =========================
+st.set_page_config(page_title="GCN Defect Prediction", layout="wide")
+st.title("GCN Defect Prediction — Streamlit App")
+
+with st.sidebar:
+    st.header("Configuration")
+    model_path = st.text_input("Model checkpoint path", value="gcn_full_model.pth")
+    device_opt = st.selectbox("Device", ["cpu", "cuda"], index=0)
+    allow_unsafe = st.toggle(
+        "Allow UNSAFE fallback load (weights_only=False) — use only if you trust the checkpoint",
+        value=False,
+        help="If safe load fails, the app will try unsafe load which can execute code embedded in the checkpoint."
+    )
+    use_uploaded = st.toggle("Use uploaded CSVs (node_features.csv, edge_index.csv)", value=False)
+    st.markdown("---")
+    st.caption("• node_features.csv: rows = nodes, columns = numeric features\n"
+               "• edge_index.csv: 2 columns [src, dst] (0-based)")
+
+exp_col1, exp_col2 = st.columns([2, 3])
+with exp_col1:
+    expected_k = None
+    if os.path.exists(model_path):
+        try:
+            expected_k = expected_in_feats_from_ckpt(model_path, allow_unsafe=allow_unsafe)
+            st.success(f"Checkpoint expects **{expected_k}** input features.")
+        except Exception as e:
+            st.error(f"Failed to read expected features from checkpoint:\n{e}")
+    else:
+        st.error(f"Model file not found: {model_path}")
+
+# Data inputs
+node_df_raw = None
+edge_df = None
+
+left, right = st.columns(2)
+with left:
+    st.subheader("Node Features")
+    if use_uploaded:
+        f_nodes = st.file_uploader("Upload node_features.csv", type=["csv"], key="nodes")
+        if f_nodes is not None:
+            try:
+                node_df_raw = pd.read_csv(f_nodes)
+                st.success(f"Loaded node_features.csv with shape {node_df_raw.shape}")
+            except Exception as e:
+                st.error(f"Could not read uploaded node_features.csv: {e}")
+    else:
+        if os.path.exists("node_features.csv"):
+            try:
+                node_df_raw = pd.read_csv("node_features.csv")
+                st.info(f"Using local node_features.csv (shape {node_df_raw.shape})")
+            except Exception as e:
+                st.error(f"Could not read local node_features.csv: {e}")
+        else:
+            st.warning("node_features.csv not found locally.")
+
+with right:
+    st.subheader("Edge Index")
+    if use_uploaded:
+        f_edges = st.file_uploader("Upload edge_index.csv", type=["csv"], key="edges")
+        if f_edges is not None:
+            try:
+                edge_df = pd.read_csv(f_edges)
+                st.success(f"Loaded edge_index.csv with shape {edge_df.shape}")
+            except Exception as e:
+                st.error(f"Could not read uploaded edge_index.csv: {e}")
+    else:
+        if os.path.exists("edge_index.csv"):
+            try:
+                edge_df = pd.read_csv("edge_index.csv")
+                st.info(f"Using local edge_index.csv (shape {edge_df.shape})")
+            except Exception as e:
+                st.error(f"Could not read local edge_index.csv: {e}")
+        else:
+            st.warning("edge_index.csv not found locally.")
+
+st.markdown("---")
+
+graph_ready = expected_k is not None and node_df_raw is not None and edge_df is not None
+
+if graph_ready:
+    try:
+        num_df = parse_node_features(node_df_raw)
+        feat_cols_before = num_df.columns.tolist()
+        aligned_df = align_features(num_df, expected_k, warn=True)
+        feat_cols_after = aligned_df.columns.tolist()
+
+        # Offer download of the aligned CSV used for prediction
+        csv_bytes = aligned_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Download aligned node_features.csv",
+            data=csv_bytes,
+            file_name="node_features_aligned.csv",
+            mime="text/csv"
+        )
+
+        data = data_from_frames(aligned_df, edge_df)
+        st.info(f"Graph ready: {data.num_nodes} nodes, {data.num_edges} edges, {aligned_df.shape[1]} features.")
+
+        if feat_cols_before != feat_cols_after:
+            with st.expander("Feature columns (before → after)"):
+                n_before = len(feat_cols_before)
+                n_after = len(feat_cols_after)
+                n = max(n_before, n_after)
+                before = feat_cols_before + [""] * (n - n_before)
+                after = feat_cols_after + [""] * (n - n_after)
+                st.dataframe(pd.DataFrame({"before": before, "after": after}), use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Failed to build graph: {e}")
+        graph_ready = False
+
+pred_col, prob_col = st.columns(2)
+if st.button("Run Prediction", disabled=not graph_ready):
+    try:
+        device = torch.device(device_opt if (device_opt == "cuda" and torch.cuda.is_available()) else "cpu")
+        model = load_model(model_path, num_features=expected_k, device=str(device), allow_unsafe=allow_unsafe)
+        with torch.no_grad():
+            prob = model(data.x.to(device), data.edge_index.to(device), data.batch.to(device))
+        p = float(prob.squeeze().cpu().item())
+        y_hat = int(p >= 0.5)
+
+        with pred_col:
+            st.success(f"Predicted class: **{y_hat}** (thr=0.5)")
+        with prob_col:
+            st.metric("Defect probability", f"{p:.4f}")
+
+        st.markdown("### Feature Summary (aligned)")
+        feat_df = pd.DataFrame({
+            "feature": feat_cols_after,
+            "mean": data.x.cpu().numpy().mean(axis=0),
+            "std":  data.x.cpu().numpy().std(axis=0)
+        })
+        st.dataframe(feat_df, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
+
+with st.expander("Troubleshooting"):
+    st.markdown(
+        """
+- **Safe vs Unsafe load:** This app first tries a *safe* load (`weights_only=True`) with an allow-list for `GCN` and `GCNConv`.
+  If it still fails and you **trust** the checkpoint, toggle **“Allow UNSAFE fallback load”** in the sidebar.
+- **Feature count mismatch:** The app auto-trims/pads features to the expected count from the checkpoint.
+- **Edge errors:** `edge_index.csv` must be 0-based node IDs within `[0, num_nodes-1]`.
+- **GPU:** Select `cuda` only if a CUDA GPU is available.
+        """
+    )
